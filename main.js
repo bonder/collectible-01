@@ -81,11 +81,15 @@ class GameScene extends Phaser.Scene {
         this.collectibles.children.iterate((child) => {
             child.setImmovable(true);
             child.body.allowGravity = false;
-            child.setPosition(
-                Phaser.Math.Between(50, 750),
-                Phaser.Math.Between(50, 550)
-            );
-        });
+        
+            let x, y;
+            do {
+                x = Phaser.Math.Between(50, 750);
+                y = Phaser.Math.Between(50, 550);
+            } while (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) < 50);
+        
+            child.setPosition(x, y);
+        });        
     
         this.physics.add.overlap(this.player, this.collectibles, this.collectItem, null, this);
     }
