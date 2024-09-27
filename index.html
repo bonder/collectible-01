@@ -7,17 +7,36 @@
         body {
             margin: 0;
             padding: 0;
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
         }
-        canvas {
-            display: block;
-            margin: auto;
+        #game-container {
+            position: relative;
+        }
+        #wave-announcement {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 36px;
+            color: #fff;
+            text-align: center;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+            display: none;
         }
     </style>
 </head>
 <body>
+    <div id="game-container">
+        <div id="wave-announcement"></div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.85.0/dist/phaser.js"></script>
     <script src="main.js"></script>
-
 </body>
 </html>

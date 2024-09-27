@@ -26,23 +26,33 @@ class GameScene extends Phaser.Scene {
         enemyGraphics.destroy();
     }
     
-
     create() {
         // Initialize variables
         this.score = 0;
-        this.events.emit('updateScore', this.score);
+        this.wave = 1;
         this.gameOver = false;
 
         // Create game objects
         this.createPlayer();
+        
+        // Initialize physics groups
+        this.collectibles = this.physics.add.group();
+        this.enemies = this.physics.add.group();
+
         this.createCollectibles();
         this.createEnemies();
 
         // Set up input handling
         this.cursors = this.input.keyboard.createCursorKeys();
 
-        // Display score
-        //this.scoreText = this.add.text(16, 16, 'Score: 0', { fontSize: '24px', fill: '#ffffff' });
+        // Set up collisions
+        this.physics.add.overlap(this.player, this.collectibles, this.collectItem, null, this);
+        this.physics.add.collider(this.player, this.enemies, this.hitEnemy, null, this);
+        this.physics.add.collider(this.enemies, this.enemies);
+
+        // Emit initial events
+        this.events.emit('updateScore', this.score);
+        this.events.emit('updateWave', this.wave);
     }
 
     update() {
@@ -73,43 +83,32 @@ class GameScene extends Phaser.Scene {
     }
 
     createCollectibles() {
-        this.collectibles = this.physics.add.group({
-            key: 'collectibleSprite',
-            repeat: 9,
-        });
+        this.collectibles.clear(true, true);
     
-        this.collectibles.children.iterate((child) => {
-            child.setImmovable(true);
-            child.body.allowGravity = false;
-        
+        for (let i = 0; i < 10 + this.wave; i++) {
             let x, y;
             do {
                 x = Phaser.Math.Between(50, 750);
                 y = Phaser.Math.Between(50, 550);
-            } while (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) < 50);
+            } while (this.player && Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) < 50);
         
-            child.setPosition(x, y);
-        });        
-    
-        this.physics.add.overlap(this.player, this.collectibles, this.collectItem, null, this);
+            const collectible = this.collectibles.create(x, y, 'collectibleSprite');
+            collectible.setImmovable(true);
+            collectible.body.allowGravity = false;
+        }
     }
     
-
     createEnemies() {
-        this.enemies = this.physics.add.group({
-            key: 'enemySprite',
-            repeat: 4,
-            setXY: { x: Phaser.Math.Between(50, 750), y: Phaser.Math.Between(50, 550) },
-        });
+        this.enemies.clear(true, true);
 
-        this.enemies.children.iterate((enemy) => {
+        for (let i = 0; i < 5 + Math.floor(this.wave / 2); i++) {
+            const x = Phaser.Math.Between(50, 750);
+            const y = Phaser.Math.Between(50, 550);
+            const enemy = this.enemies.create(x, y, 'enemySprite');
             enemy.setCollideWorldBounds(true);
             enemy.setBounce(1);
             enemy.body.setVelocity(Phaser.Math.Between(-100, 100), Phaser.Math.Between(-100, 100));
-        });
-
-        this.physics.add.collider(this.player, this.enemies, this.hitEnemy, null, this);
-        this.physics.add.collider(this.enemies, this.enemies);
+        }
     }
 
     collectItem(player, collectible) {
@@ -117,13 +116,24 @@ class GameScene extends Phaser.Scene {
 
         this.score += 10;
         this.events.emit('updateScore', this.score);
-        //this.scoreText.setText('Score: ' + this.score);
 
-        if (this.collectibles.countActive(true) === 0) {
-            this.collectibles.children.iterate(function (child) {
-                child.enableBody(true, Phaser.Math.Between(50, 750), Phaser.Math.Between(50, 550), true, true);
-            });
+        if (this.collectibles && this.collectibles.countActive(true) === 0) {
+            this.completeWave();
         }
+    }
+
+    completeWave() {
+        // Emit event for wave completion
+        this.events.emit('waveCompleted', this.wave);
+
+        // Start the next wave after a short delay
+        this.time.delayedCall(2500, () => {
+            // Increment the wave counter here, just before starting the new wave
+            this.wave++;
+            this.events.emit('updateWave', this.wave);
+            this.createCollectibles();
+            this.createEnemies();
+        });
     }
 
     hitEnemy(player, enemy) {
@@ -132,8 +142,7 @@ class GameScene extends Phaser.Scene {
         this.player.anims.stop();
 
         this.gameOver = true;
-        this.events.emit('gameOver', this.score);
-        //this.scoreText.setText('Game Over! Final Score: ' + this.score);
+        this.events.emit('gameOver', this.score, this.wave);
 
         // Restart the game after a delay
         this.time.delayedCall(3000, () => {
@@ -148,26 +157,89 @@ class UIScene extends Phaser.Scene {
     }
 
     create() {
+        // Initialize high score from localStorage
+        this.highScore = localStorage.getItem('highScore') || 0;
+
         // Display score
         this.scoreText = this.add.text(16, 16, 'Score: 0', {
             fontSize: '24px',
             fill: '#ffffff',
         });
 
+        // Display wave
+        this.waveText = this.add.text(16, 48, 'Wave: 1', {
+            fontSize: '24px',
+            fill: '#ffffff',
+        });
+
+        // Display high score on the right
+        this.highScoreText = this.add.text(this.cameras.main.width - 16, 16, 'High Score: ' + this.highScore, {
+            fontSize: '24px',
+            fill: '#ffffff',
+        });
+        this.highScoreText.setOrigin(1, 0); // Align to the right edge
+
+        // Create wave announcement text
+        this.waveAnnouncement = this.add.text(400, 300, '', {
+            fontSize: '36px',
+            fill: '#ffffff',
+            backgroundColor: '#000000',
+            padding: { x: 20, y: 10 },
+        });
+        this.waveAnnouncement.setOrigin(0.5);
+        this.waveAnnouncement.setVisible(false);
+
+        this.scoreText.setBackgroundColor('#000000').setPadding(5);
+        this.waveText.setBackgroundColor('#000000').setPadding(5);
+        this.highScoreText.setBackgroundColor('#000000').setPadding(5);
+        
         // Get reference to the GameScene
         const gameScene = this.scene.get('GameScene');
 
+        // Remove previous listeners if any
+        gameScene.events.off('updateScore', this.updateScore, this);
+        gameScene.events.off('updateWave', this.updateWave, this);
+        gameScene.events.off('waveCompleted', this.showWaveAnnouncement, this);
+        gameScene.events.off('gameOver', this.displayGameOver, this);
+
         // Listen to events from the GameScene
         gameScene.events.on('updateScore', this.updateScore, this);
+        gameScene.events.on('updateWave', this.updateWave, this);
+        gameScene.events.on('waveCompleted', this.showWaveAnnouncement, this);
         gameScene.events.on('gameOver', this.displayGameOver, this);
     }
 
     updateScore(score) {
         this.scoreText.setText('Score: ' + score);
+
+        // Check if current score exceeds the high score
+        if (score > this.highScore) {
+            this.highScore = score;
+            // Update the high score in localStorage
+            localStorage.setItem('highScore', this.highScore);
+
+            // Update the high score display
+            this.highScoreText.setText('High Score: ' + this.highScore);
+        }
     }
 
-    displayGameOver(finalScore) {
+    updateWave(wave) {
+        this.waveText.setText('Wave: ' + wave);
+    }
+
+    showWaveAnnouncement(wave) {
+        this.waveAnnouncement.setText(`Wave ${wave} Completed!`);
+        this.waveAnnouncement.setVisible(true);
+
+        // Hide the announcement after 2 seconds
+        this.time.delayedCall(2000, () => {
+            this.waveAnnouncement.setVisible(false);
+        });
+    }
+
+    displayGameOver(finalScore, finalWave) {
         this.scoreText.setText('Game Over! Final Score: ' + finalScore);
+        this.waveText.setText('Final Wave: ' + finalWave);
     }
 }
 
@@ -184,6 +256,7 @@ const config = {
         },
     },
     scene: [GameScene, UIScene], // Include both scenes
+    parent: 'game-container',
 };
 
 const game = new Phaser.Game(config);
