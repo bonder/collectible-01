@@ -142,8 +142,8 @@ class GameScene extends Phaser.Scene {
       collectible.body.allowGravity = false
     }
 
-    this.updateCollectibles(this.remainingCollectibles)
-    //this.events.emit("updateCollectibles", this.remainingCollectibles)
+    //this.updateCollectibles(this.remainingCollectibles)
+    this.events.emit("updateCollectibles", this.remainingCollectibles)
   }
 
   createEnemies() {
