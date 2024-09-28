@@ -126,7 +126,7 @@ class GameScene extends Phaser.Scene {
   createCollectibles() {
     this.collectibles.clear(true, true)
 
-    this.remainingCollectibles = 10 + this.wave
+    this.remainingCollectibles = 10
     for (let i = 0; i < this.remainingCollectibles; i++) {
       let x, y
       do {
@@ -142,22 +142,25 @@ class GameScene extends Phaser.Scene {
       collectible.body.allowGravity = false
     }
 
-    this.events.emit("updateCollectibles", this.remainingCollectibles)
+    this.updateCollectibles(this.remainingCollectibles)
+    //this.events.emit("updateCollectibles", this.remainingCollectibles)
   }
 
   createEnemies() {
-    this.enemies.clear(true, true)
-
-    for (let i = 0; i < 5 + Math.floor(this.wave / 2); i++) {
-      const x = Phaser.Math.Between(50, 750)
-      const y = Phaser.Math.Between(50, 550)
-      const enemy = this.enemies.create(x, y, "enemySprite")
-      enemy.setCollideWorldBounds(true)
-      enemy.setBounce(1)
-      enemy.body.setVelocity(
-        Phaser.Math.Between(-100, 100),
-        Phaser.Math.Between(-100, 100)
-      )
+    // Create enemies only once at the start of the game
+    if (this.enemies.getChildren().length === 0) {
+      const initialEnemyCount = 10 // Adjust this number for game balance
+      for (let i = 0; i < initialEnemyCount; i++) {
+        const x = Phaser.Math.Between(50, 750)
+        const y = Phaser.Math.Between(50, 550)
+        const enemy = this.enemies.create(x, y, "enemySprite")
+        enemy.setCollideWorldBounds(true)
+        enemy.setBounce(1)
+        enemy.body.setVelocity(
+          Phaser.Math.Between(-100, 100),
+          Phaser.Math.Between(-100, 100)
+        )
+      }
     }
   }
 
@@ -178,8 +181,8 @@ class GameScene extends Phaser.Scene {
     // Stop the wave timer
     this.waveTimerEvent.remove()
 
-    // Calculate bonus points
-    const bonusPoints = Math.floor(this.waveTimer / 1000) * 2
+    // Calculate bonus points (10 points per second remaining)
+    const bonusPoints = Math.floor(this.waveTimer / 1000) * 10
     this.score += bonusPoints
 
     // Emit event for wave completion
@@ -192,7 +195,7 @@ class GameScene extends Phaser.Scene {
       this.wave++
       this.events.emit("updateWave", this.wave)
       this.createCollectibles()
-      this.createEnemies()
+      // We no longer create new enemies here
 
       // Reset the wave timer
       this.resetWaveTimer()
