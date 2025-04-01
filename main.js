@@ -487,6 +487,9 @@ class GameScene extends Phaser.Scene {
       this.canDash = true
       this.events.emit("dashReady")
     }, [], this)
+    
+    // Update UI to show dash on cooldown
+    this.events.emit("dashReady", false)
   }
 
   endDash() {
@@ -1013,36 +1016,78 @@ class UIScene extends Phaser.Scene {
    * Create all UI text elements
    */
   createUIElements() {
-    const padding = 5
-    const margin = 16
-
-    // Create UI text elements with consistent styling
-    this.scoreText = this.createText(margin, margin, "Score: 0")
-    this.waveText = this.createText(margin, margin + 32, "Wave: 1")
-    this.timerText = this.createText(margin, margin + 64, "Time: 20")
-    this.collectiblesText = this.createText(
-      margin,
-      margin + 96,
-      "Collectibles: 0"
-    )
-
-    // High score on the right side
-    this.highScoreText = this.createText(
-      this.cameras.main.width - margin,
-      margin,
-      "High Score: " + this.highScore
-    )
-    this.highScoreText.setOrigin(1, 0) // Align to the right edge
-
-    // Wave announcement in the center
+    // Get game dimensions
+    const width = this.cameras.main.width;
+    const height = this.cameras.main.height;
+    const padding = 10;
+    
+    // Create a semi-transparent panel for the top UI bar
+    this.topPanel = this.add.rectangle(width/2, padding, width, 50, 0x000000, 0.7)
+      .setOrigin(0.5, 0)
+      .setDepth(10);
+    
+    // Create a semi-transparent panel for the bottom UI bar
+    this.bottomPanel = this.add.rectangle(width/2, height - 50 - padding, width, 50, 0x000000, 0.7)
+      .setOrigin(0.5, 0)
+      .setDepth(10);
+    
+    // Updated text style with shadow and better font
+    const textStyle = {
+      fontSize: "18px",
+      fontFamily: "Arial, sans-serif",
+      color: "#ffffff",
+      stroke: "#000000",
+      strokeThickness: 2,
+      shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 2, fill: true }
+    };
+    
+    // Top bar elements
+    this.scoreText = this.add.text(padding, padding + 15, "Score: 0", textStyle)
+      .setDepth(11);
+    
+    this.highScoreText = this.add.text(width - padding, padding + 15, "High Score: " + this.highScore, textStyle)
+      .setOrigin(1, 0)
+      .setDepth(11);
+    
+    // Bottom bar elements
+    this.waveText = this.add.text(padding, height - 35 - padding, "Wave: 1", textStyle)
+      .setDepth(11);
+    
+    this.timerText = this.add.text(width/2, height - 35 - padding, "Time: 20", textStyle)
+      .setOrigin(0.5, 0)
+      .setDepth(11);
+    
+    this.collectiblesText = this.add.text(width - padding, height - 35 - padding, "Collectibles: 0", textStyle)
+      .setOrigin(1, 0)
+      .setDepth(11);
+    
+    // Add dash cooldown indicator in bottom-left corner
+    this.dashIndicator = this.add.circle(padding + 15, height - 15 - padding, 8, 0x00ffff)
+      .setDepth(11);
+    this.dashLabel = this.add.text(padding + 30, height - 20 - padding, "Dash", textStyle)
+      .setDepth(11)
+      .setFontSize("14px");
+    
+    // Wave announcement in the center with improved styling
     this.waveAnnouncement = this.add.text(
-      this.cameras.main.width / 2,
-      this.cameras.main.height / 2,
+      width / 2,
+      height / 2,
       "",
-      this.ANNOUNCEMENT_STYLE
+      {
+        fontSize: "32px",
+        fontFamily: "Arial, sans-serif",
+        fontStyle: "bold",
+        color: "#ffffff",
+        stroke: "#000000",
+        strokeThickness: 4,
+        shadow: { offsetX: 2, offsetY: 2, color: '#000', blur: 5, fill: true },
+        backgroundColor: "#00000088",
+        padding: { x: 20, y: 10 },
+      }
     )
-    this.waveAnnouncement.setOrigin(0.5)
-    this.waveAnnouncement.setVisible(false)
+    .setOrigin(0.5)
+    .setDepth(20)
+    .setVisible(false);
   }
 
   /**
@@ -1071,6 +1116,12 @@ class UIScene extends Phaser.Scene {
 
     // Add new event listeners
     this.addEventListeners(gameScene)
+    
+    // Add dash ready event listener
+    gameScene.events.on("dashReady", this.updateDashIndicator, this)
+    
+    // Initialize dash indicator
+    this.updateDashIndicator(true)
   }
 
   /**
@@ -1153,10 +1204,26 @@ class UIScene extends Phaser.Scene {
       `Wave ${wave} Completed!\nBonus Points: ${bonusPoints}`
     )
     this.waveAnnouncement.setVisible(true)
+    
+    // Add a subtle scale animation
+    this.tweens.add({
+      targets: this.waveAnnouncement,
+      scale: { from: 0.8, to: 1 },
+      duration: 300,
+      ease: 'Back.easeOut'
+    })
 
     // Hide the announcement after the specified duration
     this.time.delayedCall(this.ANNOUNCEMENT_DURATION, () => {
-      this.waveAnnouncement.setVisible(false)
+      this.tweens.add({
+        targets: this.waveAnnouncement,
+        alpha: 0,
+        duration: 300,
+        onComplete: () => {
+          this.waveAnnouncement.setVisible(false)
+          this.waveAnnouncement.setAlpha(1)
+        }
+      })
     })
   }
 
@@ -1183,6 +1250,20 @@ class UIScene extends Phaser.Scene {
     this.waveText.setText("Final Wave: " + finalWave)
     this.timerText.setText("")
     this.collectiblesText.setText("")
+  }
+
+  /**
+   * Update dash indicator to show availability
+   * @param {boolean} isReady - Whether dash is ready
+   */
+  updateDashIndicator(isReady) {
+    if (isReady) {
+      this.dashIndicator.setFillStyle(0x00ffff)
+      this.dashLabel.setColor("#ffffff")
+    } else {
+      this.dashIndicator.setFillStyle(0x555555)
+      this.dashLabel.setColor("#888888")
+    }
   }
 }
 
