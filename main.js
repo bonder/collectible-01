@@ -2,15 +2,21 @@ class GameScene extends Phaser.Scene {
   constructor() {
     super({ key: "GameScene" })
 
-    // Game configuration constants
+    // Enhanced game configuration constants
     this.PLAYER_SPEED = 200
-    this.INITIAL_WAVE_TIME = 20000 // 20 seconds in milliseconds
+    this.PLAYER_DASH_SPEED = 400
+    this.DASH_DURATION = 200
+    this.DASH_COOLDOWN = 1000
+    this.INITIAL_WAVE_TIME = 20000
     this.COLLECTIBLES_PER_WAVE = 10
     this.INITIAL_ENEMY_COUNT = 10
+    this.ENEMY_SPEED_MIN = 80
+    this.ENEMY_SPEED_MAX = 120
     this.BONUS_POINTS_PER_SECOND = 10
     this.SAFE_SPAWN_DISTANCE = 200
     this.GAME_RESTART_DELAY = 3000
     this.WAVE_TRANSITION_DELAY = 2500
+    this.POWERUP_CHANCE = 0.2
   }
 
   preload() {
@@ -75,7 +81,14 @@ class GameScene extends Phaser.Scene {
     this.waveTime = this.INITIAL_WAVE_TIME
     this.remainingCollectibles = 0
     this.waveTimer = this.waveTime
-
+    
+    // New game state variables
+    this.canDash = true
+    this.isDashing = false
+    this.combo = 0
+    this.comboTimer = 0
+    this.playerShield = false
+    
     this.resetWaveTimer()
   }
 
@@ -89,13 +102,37 @@ class GameScene extends Phaser.Scene {
     // Initialize physics groups
     this.collectibles = this.physics.add.group({ allowGravity: false })
     this.enemies = this.physics.add.group()
+    this.powerups = this.physics.add.group({ allowGravity: false })
 
     // Create initial game entities
     this.createCollectibles()
     this.createEnemies()
+    this.createParticleEffects()
 
     // Set up collisions
     this.setupCollisions()
+  }
+
+  createParticleEffects() {
+    // Collection effect
+    this.collectParticles = this.add.particles(0, 0, 'particleSprite', {
+      lifespan: 800,
+      speed: { min: 50, max: 100 },
+      scale: { start: 0.6, end: 0 },
+      alpha: { start: 1, end: 0 },
+      blendMode: 'ADD',
+      emitting: false
+    })
+    
+    // Explosion effect
+    this.explosionParticles = this.add.particles(0, 0, 'explosionSprite', {
+      lifespan: 1000,
+      speed: { min: 50, max: 200 },
+      scale: { start: 1, end: 0 },
+      alpha: { start: 1, end: 0 },
+      blendMode: 'SCREEN',
+      emitting: false
+    })
   }
 
   /**
@@ -121,6 +158,15 @@ class GameScene extends Phaser.Scene {
     )
 
     this.physics.add.collider(this.enemies, this.enemies)
+    
+    // Add powerup collision
+    this.physics.add.overlap(
+      this.player,
+      this.powerups,
+      this.collectPowerup,
+      null,
+      this
+    )
   }
   
   /**
@@ -189,6 +235,12 @@ class GameScene extends Phaser.Scene {
 
     this.updateWaveTimer(delta)
     this.handlePlayerMovement()
+    this.updateComboSystem(delta)
+    
+    // Update dash trail if dashing
+    if (this.isDashing) {
+      this.playerTrail.setPosition(this.player.x, this.player.y)
+    }
 
     // Update waypoints position to follow the player
     if (this.waypointsContainer) {
@@ -373,20 +425,74 @@ class GameScene extends Phaser.Scene {
    */
   handlePlayerMovement() {
     // Reset velocity at the start of each update
-    this.player.body.setVelocity(0)
-
-    // Apply velocity based on input
-    if (this.cursors.left.isDown) {
-      this.player.body.setVelocityX(-this.PLAYER_SPEED)
-    } else if (this.cursors.right.isDown) {
-      this.player.body.setVelocityX(this.PLAYER_SPEED)
+    if (!this.isDashing) {
+      this.player.body.setVelocity(0)
     }
 
-    if (this.cursors.up.isDown) {
-      this.player.body.setVelocityY(-this.PLAYER_SPEED)
-    } else if (this.cursors.down.isDown) {
-      this.player.body.setVelocityY(this.PLAYER_SPEED)
+    // Handle dash ability
+    if (this.cursors.space.isDown && this.canDash && !this.isDashing) {
+      this.startDash()
     }
+
+    // Regular movement (only if not dashing)
+    if (!this.isDashing) {
+      // Apply velocity based on input
+      if (this.cursors.left.isDown) {
+        this.player.body.setVelocityX(-this.PLAYER_SPEED)
+      } else if (this.cursors.right.isDown) {
+        this.player.body.setVelocityX(this.PLAYER_SPEED)
+      }
+
+      if (this.cursors.up.isDown) {
+        this.player.body.setVelocityY(-this.PLAYER_SPEED)
+      } else if (this.cursors.down.isDown) {
+        this.player.body.setVelocityY(this.PLAYER_SPEED)
+      }
+    }
+  }
+
+  startDash() {
+    this.isDashing = true
+    this.canDash = false
+    
+    // Set dash velocity based on current facing direction
+    let dashVelocity = new Phaser.Math.Vector2(0, 0)
+    
+    if (this.cursors.left.isDown) dashVelocity.x = -this.PLAYER_DASH_SPEED
+    else if (this.cursors.right.isDown) dashVelocity.x = this.PLAYER_DASH_SPEED
+    
+    if (this.cursors.up.isDown) dashVelocity.y = -this.PLAYER_DASH_SPEED
+    else if (this.cursors.down.isDown) dashVelocity.y = this.PLAYER_DASH_SPEED
+    
+    // If no direction pressed, dash forward
+    if (dashVelocity.x === 0 && dashVelocity.y === 0) {
+      dashVelocity.y = -this.PLAYER_DASH_SPEED
+    }
+    
+    // Apply dash velocity
+    this.player.body.setVelocity(dashVelocity.x, dashVelocity.y)
+    
+    // Visual effects
+    this.player.setTint(0x00ffff)
+    
+    // Start particle emission
+    this.playerTrail.setPosition(this.player.x, this.player.y)
+    this.playerTrail.start()
+    
+    // End dash after duration
+    this.time.delayedCall(this.DASH_DURATION, this.endDash, [], this)
+    
+    // Reset dash cooldown
+    this.time.delayedCall(this.DASH_COOLDOWN, () => {
+      this.canDash = true
+      this.events.emit("dashReady")
+    }, [], this)
+  }
+
+  endDash() {
+    this.isDashing = false
+    this.player.clearTint()
+    this.playerTrail.stop()
   }
 
   /**
@@ -400,9 +506,8 @@ class GameScene extends Phaser.Scene {
     this.player.setCollideWorldBounds(true)
     
     // Adjust the player's physics body to be slightly smaller than the visual sprite
-    // This creates a more forgiving collision area
-    const bodyWidth = 30  // Smaller than the sprite width (40)
-    const bodyHeight = 30 // Smaller than the sprite height (40)
+    const bodyWidth = 30
+    const bodyHeight = 30
     
     // Center the body within the sprite
     const offsetX = (40 - bodyWidth) / 2
@@ -413,6 +518,22 @@ class GameScene extends Phaser.Scene {
 
     // Create waypoints container
     this.createWaypoints()
+    
+    // Create dash effect particle
+    this.generateTexture("dashParticle", 20, 20, (graphics) => {
+      graphics.fillStyle(0x00ffff, 1) // Cyan color
+      graphics.fillCircle(10, 10, 10) // Draw a circle
+    })
+    
+    // Add dash trail effect
+    this.playerTrail = this.add.particles(0, 0, 'dashParticle', {
+      lifespan: 300,
+      speed: { min: 10, max: 30 },
+      scale: { start: 0.5, end: 0 },
+      alpha: { start: 0.6, end: 0 },
+      blendMode: 'ADD',
+      emitting: false
+    })
   }
 
   /**
@@ -609,10 +730,136 @@ class GameScene extends Phaser.Scene {
     this.events.emit("updateScore", this.score)
     this.events.emit("updateCollectibles", this.remainingCollectibles)
 
+    // Add particle effect
+    this.collectParticles.setPosition(collectible.x, collectible.y)
+    this.collectParticles.explode(10)
+    
+    // Combo system
+    this.combo++
+    this.comboTimer = 2000 // Reset combo timer
+    
+    // Bonus points for combo
+    let comboBonus = Math.min(this.combo - 1, 5) * 5
+    this.score += 10 + comboBonus
+    
+    // Show combo text
+    if (this.combo > 1) {
+      this.showComboText(collectible.x, collectible.y, this.combo)
+    }
+    
+    // Chance to spawn powerup
+    if (Math.random() < this.POWERUP_CHANCE) {
+      this.spawnPowerup(collectible.x, collectible.y)
+    }
+
     // Check if wave is complete
     if (this.remainingCollectibles === 0) {
       this.completeWave()
     }
+  }
+
+  updateComboSystem(delta) {
+    if (this.combo > 1) {
+      this.comboTimer -= delta
+      if (this.comboTimer <= 0) {
+        this.combo = 0
+      }
+    }
+  }
+
+  showComboText(x, y, combo) {
+    const comboText = this.add.text(x, y - 20, `${combo}x COMBO!`, {
+      fontSize: '18px',
+      fontStyle: 'bold',
+      color: '#ffff00'
+    }).setOrigin(0.5)
+    
+    this.tweens.add({
+      targets: comboText,
+      y: y - 50,
+      alpha: 0,
+      duration: 800,
+      ease: 'Power2',
+      onComplete: () => comboText.destroy()
+    })
+  }
+
+  spawnPowerup(x, y) {
+    // Choose random powerup type
+    const powerupTypes = ['shield', 'speed', 'points']
+    const type = Phaser.Utils.Array.GetRandom(powerupTypes)
+    
+    const powerup = this.powerups.create(x, y, `powerup${type}`)
+    powerup.type = type
+    
+    // Add pulsing effect
+    this.tweens.add({
+      targets: powerup,
+      scale: 1.2,
+      duration: 500,
+      yoyo: true,
+      repeat: -1
+    })
+    
+    // Auto-destroy after 5 seconds
+    this.time.delayedCall(5000, () => {
+      if (powerup.active) {
+        powerup.destroy()
+      }
+    })
+  }
+
+  collectPowerup(player, powerup) {
+    // Apply powerup effect based on type
+    switch(powerup.type) {
+      case 'shield':
+        this.activateShield()
+        break
+      case 'speed':
+        this.activateSpeedBoost()
+        break
+      case 'points':
+        this.score += 50
+        this.events.emit("updateScore", this.score)
+        break
+    }
+    
+    // Visual effect
+    this.collectParticles.setPosition(powerup.x, powerup.y)
+    this.collectParticles.explode(15)
+    
+    // Remove powerup
+    powerup.destroy()
+  }
+
+  activateShield() {
+    this.playerShield = true
+    
+    // Visual effect
+    const shield = this.add.circle(0, 0, 30, 0x00ffff, 0.3)
+    shield.setStrokeStyle(2, 0x00ffff)
+    
+    this.shieldContainer = this.add.container(this.player.x, this.player.y, [shield])
+    
+    // Shield lasts for 10 seconds
+    this.time.delayedCall(10000, () => {
+      this.playerShield = false
+      this.shieldContainer.destroy()
+    })
+  }
+
+  activateSpeedBoost() {
+    const originalSpeed = this.PLAYER_SPEED
+    this.PLAYER_SPEED = this.PLAYER_SPEED * 1.5
+    
+    // Visual effect
+    this.player.setTint(0xffff00)
+    
+    // Speed boost lasts for 5 seconds
+    this.time.delayedCall(5000, () => {
+      this.PLAYER_SPEED = originalSpeed
+      this.player.clearTint()
+    })
   }
 
   /**
@@ -655,6 +902,14 @@ class GameScene extends Phaser.Scene {
 
     // Reset the wave timer (could be adjusted for difficulty)
     this.resetWaveTimer()
+    
+    // Increase difficulty with each wave
+    const enemyCount = this.INITIAL_ENEMY_COUNT + Math.floor(this.wave / 2)
+    this.createEnemies(enemyCount)
+    
+    // Increase enemy speed with each wave
+    this.ENEMY_SPEED_MIN += 5
+    this.ENEMY_SPEED_MAX += 5
   }
 
   /**
@@ -678,6 +933,21 @@ class GameScene extends Phaser.Scene {
    * @param {Phaser.GameObjects.Sprite} enemy - The enemy sprite
    */
   hitEnemy(player, enemy) {
+    // Check if player has shield
+    if (this.playerShield) {
+      // Destroy enemy instead
+      enemy.destroy()
+      
+      // Visual effect
+      this.explosionParticles.setPosition(enemy.x, enemy.y)
+      this.explosionParticles.explode(20)
+      
+      // Remove shield
+      this.playerShield = false
+      this.shieldContainer.destroy()
+      return
+    }
+    
     // Pause game physics
     this.physics.pause()
 
