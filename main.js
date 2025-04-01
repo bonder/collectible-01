@@ -8,7 +8,7 @@ class GameScene extends Phaser.Scene {
     this.DASH_DURATION = 200
     this.DASH_COOLDOWN = 1000
     this.INITIAL_WAVE_TIME = 20000
-    this.COLLECTIBLES_PER_WAVE = 10
+    this.COINS_PER_WAVE = 10  // Renamed from COLLECTIBLES_PER_WAVE
     this.INITIAL_ENEMY_COUNT = 10
     this.ENEMY_SPEED_MIN = 80
     this.ENEMY_SPEED_MAX = 120
@@ -17,6 +17,11 @@ class GameScene extends Phaser.Scene {
     this.GAME_RESTART_DELAY = 3000
     this.WAVE_TRANSITION_DELAY = 2500
     this.POWERUP_CHANCE = 0.2
+    this.COIN_FALL_HEIGHT = 300  // Height from which coins fall
+    this.COIN_FALL_DURATION = 700  // Duration of fall animation in ms
+    this.COIN_BOUNCE_HEIGHT = 50  // Height of bounce
+    this.ENEMY_TYPES = ['basic', 'fast', 'large', 'zigzag']
+    this.ENEMY_BEHAVIOR_CHANGE_TIME = 5000 // ms between behavior changes
   }
 
   preload() {
@@ -26,7 +31,7 @@ class GameScene extends Phaser.Scene {
       graphics.fillRect(0, 0, 40, 40) // Draw a rectangle
     })
 
-    this.generateTexture("collectibleSprite", 20, 20, (graphics) => {
+    this.generateTexture("coinSprite", 20, 20, (graphics) => {
       graphics.fillStyle(0xffff00, 1) // Yellow color
       graphics.fillCircle(10, 10, 10) // Draw a circle
     })
@@ -40,6 +45,17 @@ class GameScene extends Phaser.Scene {
     this.generateTexture("waypointSprite", 10, 10, (graphics) => {
       graphics.fillStyle(0x0088ff, 1) // Blue color
       graphics.fillRect(0, 0, 10, 10) // Draw a small rectangle
+    })
+
+    // Generate particle textures
+    this.generateTexture("coinParticle", 8, 8, (graphics) => {
+      graphics.fillStyle(0xffff00, 1) // Yellow color
+      graphics.fillCircle(4, 4, 4) // Small circle
+    })
+
+    this.generateTexture("coinSparkle", 6, 6, (graphics) => {
+      graphics.fillStyle(0xffffdd, 1) // Light yellow
+      graphics.fillCircle(3, 3, 3) // Small circle instead of star
     })
   }
 
@@ -100,12 +116,12 @@ class GameScene extends Phaser.Scene {
     this.createPlayer()
 
     // Initialize physics groups
-    this.collectibles = this.physics.add.group({ allowGravity: false })
+    this.coins = this.physics.add.group({ allowGravity: false }) // Renamed from collectibles
     this.enemies = this.physics.add.group()
     this.powerups = this.physics.add.group({ allowGravity: false })
 
     // Create initial game entities
-    this.createCollectibles()
+    this.createCoins() // Renamed from createCollectibles
     this.createEnemies()
     this.createParticleEffects()
 
@@ -115,7 +131,7 @@ class GameScene extends Phaser.Scene {
 
   createParticleEffects() {
     // Collection effect
-    this.collectParticles = this.add.particles(0, 0, 'particleSprite', {
+    this.collectParticles = this.add.particles(0, 0, 'coinParticle', {
       lifespan: 800,
       speed: { min: 50, max: 100 },
       scale: { start: 0.6, end: 0 },
@@ -133,6 +149,16 @@ class GameScene extends Phaser.Scene {
       blendMode: 'SCREEN',
       emitting: false
     })
+    
+    // Coin landing effect
+    this.coinLandParticles = this.add.particles(0, 0, 'coinSparkle', {
+      lifespan: 600,
+      speed: { min: 30, max: 80 },
+      scale: { start: 1, end: 0 },
+      alpha: { start: 1, end: 0 },
+      blendMode: 'ADD',
+      emitting: false
+    })
   }
 
   /**
@@ -141,8 +167,8 @@ class GameScene extends Phaser.Scene {
   setupCollisions() {
     this.physics.add.overlap(
       this.player,
-      this.collectibles,
-      this.collectItem,
+      this.coins,  // Renamed from collectibles
+      this.collectCoin,  // Renamed from collectItem
       null,
       this
     )
@@ -253,26 +279,26 @@ class GameScene extends Phaser.Scene {
     // Update enemy movement to target waypoints
     this.updateEnemyMovement()
     
-    // Update collectibles rotation (spinning animation)
-    this.updateCollectiblesRotation()
+    // Update coins rotation (spinning animation)
+    this.updateCoinsRotation()
   }
   
   /**
-   * Update collectibles to create tabletop-style spinning animation
+   * Update coins to create tabletop-style spinning animation
    */
-  updateCollectiblesRotation() {
-    // Get all collectibles
-    const collectibles = this.collectibles.getChildren()
+  updateCoinsRotation() {
+    // Get all coins
+    const coins = this.coins.getChildren()
     
-    // Update each collectible's spinning animation
-    collectibles.forEach(collectible => {
-      if (collectible.active && collectible.spinSpeed) {
+    // Update each coin's spinning animation
+    coins.forEach(coin => {
+      if (coin.active && coin.spinSpeed) {
         // Update the spin phase
-        collectible.spinPhase += collectible.spinSpeed
+        coin.spinPhase += coin.spinSpeed
         
         // Use sine wave to create the narrowing effect (like a coin spinning on its edge)
         // scaleX will oscillate between 0.2 (narrow/edge view) and 1.0 (full view)
-        collectible.scaleX = 0.2 + 0.8 * Math.abs(Math.sin(collectible.spinPhase))
+        coin.scaleX = 0.2 + 0.8 * Math.abs(Math.sin(coin.spinPhase))
       }
     })
   }
@@ -325,51 +351,52 @@ class GameScene extends Phaser.Scene {
    */
   updateEnemyMovement() {
     const enemies = this.enemies.getChildren()
-    const enemySpeed = 100
+    const time = this.time.now
 
     enemies.forEach((enemy) => {
       if (!enemy.targetWaypoint) return
 
-      // Get the actual waypoint object based on the target name
-      let targetWaypoint
-      switch (enemy.targetWaypoint) {
-        case "top":
-          targetWaypoint = this.waypointTop
-          break
-        case "bottom":
-          targetWaypoint = this.waypointBottom
-          break
-        case "left":
-          targetWaypoint = this.waypointLeft
-          break
-        case "right":
-          targetWaypoint = this.waypointRight
-          break
+      // Check if it's time to change behavior
+      if (time > enemy.nextBehaviorChange) {
+        this.changeEnemyBehavior(enemy)
+        enemy.nextBehaviorChange = time + this.ENEMY_BEHAVIOR_CHANGE_TIME
       }
-      
+
+      // Get the actual waypoint object based on the target name
+      let targetWaypoint = this.getWaypointByName(enemy.targetWaypoint)
       if (!targetWaypoint) return
       
       // Calculate the global position of the waypoint
-      // (waypoint position is relative to the container, which follows the player)
       const targetX = this.player.x + targetWaypoint.x
       const targetY = this.player.y + targetWaypoint.y
 
       // Calculate direction to the waypoint
-      const angle = Phaser.Math.Angle.Between(
+      let angle = Phaser.Math.Angle.Between(
         enemy.x,
         enemy.y,
         targetX,
         targetY
       )
+      
+      // Apply zigzag pattern for zigzag enemies
+      if (enemy.type === 'zigzag') {
+        enemy.zigzagTime += 0.016 // Approximate delta time
+        const perpAngle = angle + Math.PI/2
+        const offset = Math.sin(enemy.zigzagTime * enemy.zigzagFrequency) * enemy.zigzagAmplitude
+        angle += Math.sin(enemy.zigzagTime * enemy.zigzagFrequency * 2) * 0.5
+      }
 
-      // Set velocity based on the angle
+      // Apply enemy repulsion to prevent grouping
+      this.applyEnemyRepulsion(enemy, enemies)
+
+      // Set velocity based on the angle and enemy speed
       enemy.body.setVelocity(
-        Math.cos(angle) * enemySpeed,
-        Math.sin(angle) * enemySpeed
+        Math.cos(angle) * enemy.speed,
+        Math.sin(angle) * enemy.speed
       )
 
       // Rotate enemy to face the direction of movement
-      enemy.rotation = angle + Math.PI / 2 // Add 90 degrees since the sprite points up
+      enemy.rotation = angle + Math.PI / 2
       
       // Check if enemy has reached the waypoint
       const distance = Phaser.Math.Distance.Between(
@@ -379,8 +406,8 @@ class GameScene extends Phaser.Scene {
         targetY
       )
       
-      // If enemy is close enough to the waypoint, change target to one of the other waypoints
-      if (distance < 15) { // Adjust this threshold as needed
+      // If enemy is close enough to the waypoint, change target
+      if (distance < 15) {
         this.changeEnemyWaypoint(enemy)
       }
     })
@@ -594,20 +621,20 @@ class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Create collectible items at random positions
+   * Create coins at random positions with falling animation
    */
-  createCollectibles() {
-    // Clear any existing collectibles
-    this.collectibles.clear(true, true)
+  createCoins() {
+    // Clear any existing coins
+    this.coins.clear(true, true)
 
-    // Set the number of collectibles for this wave
-    this.remainingCollectibles = this.COLLECTIBLES_PER_WAVE
+    // Set the number of coins for this wave
+    this.remainingCoins = this.COINS_PER_WAVE
 
     const gameWidth = this.cameras.main.width
     const gameHeight = this.cameras.main.height
     const margin = 50 // Margin from edges
 
-    for (let i = 0; i < this.remainingCollectibles; i++) {
+    for (let i = 0; i < this.remainingCoins; i++) {
       // Get a safe random position away from the player
       const position = this.getRandomPosition(
         margin,
@@ -616,23 +643,47 @@ class GameScene extends Phaser.Scene {
         gameHeight - margin
       )
 
-      // Create the collectible at the random position
-      const collectible = this.collectibles.create(
+      // Create the coin above the screen (to fall down)
+      const coin = this.coins.create(
         position.x,
-        position.y,
-        "collectibleSprite"
+        position.y - this.COIN_FALL_HEIGHT,
+        "coinSprite"
       )
 
       // Set physics properties
-      collectible.setImmovable(true)
+      coin.setImmovable(true)
       
       // Add properties for tabletop-style spinning animation
-      collectible.spinPhase = Math.random() * Math.PI * 2 // Random starting phase
-      collectible.spinSpeed = 0.05 + Math.random() * 0.03 // Slightly randomized spin speed
+      coin.spinPhase = Math.random() * Math.PI * 2 // Random starting phase
+      coin.spinSpeed = 0.05 + Math.random() * 0.03 // Slightly randomized spin speed
+      
+      // Store the target y position
+      coin.targetY = position.y
+      
+      // Create falling animation with bounce
+      this.tweens.add({
+        targets: coin,
+        y: position.y,
+        duration: this.COIN_FALL_DURATION,
+        ease: 'Bounce.easeOut',
+        onComplete: () => {
+          // Play landing effect
+          this.coinLandParticles.setPosition(coin.x, coin.y + 10)
+          this.coinLandParticles.explode(8)
+          
+          // Add a subtle scale effect
+          this.tweens.add({
+            targets: coin,
+            scale: { from: 1.2, to: 1 },
+            duration: 300,
+            ease: 'Sine.easeOut'
+          })
+        }
+      })
     }
 
     // Update UI
-    this.events.emit("updateCollectibles", this.remainingCollectibles)
+    this.events.emit("updateCoins", this.remainingCoins)
   }
 
   /**
@@ -669,7 +720,7 @@ class GameScene extends Phaser.Scene {
   /**
    * Create enemy sprites that target random waypoints
    */
-  createEnemies() {
+  createEnemies(count = this.INITIAL_ENEMY_COUNT) {
     // Only create enemies if none exist
     if (this.enemies.getChildren().length === 0) {
       const gameWidth = this.cameras.main.width
@@ -679,7 +730,7 @@ class GameScene extends Phaser.Scene {
       // Define available waypoints for targeting
       const waypoints = ["top", "bottom", "left", "right"]
 
-      for (let i = 0; i < this.INITIAL_ENEMY_COUNT; i++) {
+      for (let i = 0; i < count; i++) {
         // Get random position
         const position = this.getRandomPosition(
           margin,
@@ -688,53 +739,146 @@ class GameScene extends Phaser.Scene {
           gameHeight - margin
         )
 
+        // Randomly select enemy type
+        const enemyType = Phaser.Utils.Array.GetRandom(this.ENEMY_TYPES)
+        
         // Create enemy at random position
         const enemy = this.enemies.create(position.x, position.y, "enemySprite")
+        
+        // Set enemy type-specific properties
+        this.setupEnemyByType(enemy, enemyType)
 
         // Set physics properties
         enemy.setCollideWorldBounds(true)
         enemy.setBounce(1)
         
-        // Adjust the physics body to better match the triangular shape
-        // Reduce the body size to create a smaller collision area
-        const bodyWidth = 20  // Smaller than the sprite width (30)
-        const bodyHeight = 20 // Smaller than the sprite height (30)
-        
-        // Center the body within the sprite
+        // Adjust the physics body
+        const bodyWidth = 20
+        const bodyHeight = 20
         const offsetX = (30 - bodyWidth) / 2
-        const offsetY = (30 - bodyHeight) / 2 + 5 // Move it down a bit to match the triangle's center mass
+        const offsetY = (30 - bodyHeight) / 2 + 5
         
         enemy.body.setSize(bodyWidth, bodyHeight, true)
         enemy.body.setOffset(offsetX, offsetY)
 
         // Assign a random waypoint target to this enemy
         enemy.targetWaypoint = Phaser.Utils.Array.GetRandom(waypoints)
+        
+        // Add repulsion from other enemies
+        enemy.repulsionRange = 60
+        enemy.repulsionForce = 0.5
+        
+        // Add behavior change timer
+        enemy.nextBehaviorChange = this.time.now + Phaser.Math.Between(2000, this.ENEMY_BEHAVIOR_CHANGE_TIME)
 
-        // Set initial velocity (will be updated in updateEnemyMovement)
+        // Set initial velocity
         enemy.body.setVelocity(0, 0)
       }
     }
   }
 
+  // Add this new method to set up enemy types
+  setupEnemyByType(enemy, type) {
+    enemy.type = type
+    
+    switch(type) {
+      case 'fast':
+        enemy.speed = Phaser.Math.Between(this.ENEMY_SPEED_MIN + 40, this.ENEMY_SPEED_MAX + 40)
+        enemy.setTint(0xff8800) // Orange
+        enemy.setScale(0.8)
+        break;
+      case 'large':
+        enemy.speed = Phaser.Math.Between(this.ENEMY_SPEED_MIN - 20, this.ENEMY_SPEED_MAX - 20)
+        enemy.setTint(0xff00ff) // Purple
+        enemy.setScale(1.4)
+        break;
+      case 'zigzag':
+        enemy.speed = Phaser.Math.Between(this.ENEMY_SPEED_MIN, this.ENEMY_SPEED_MAX)
+        enemy.setTint(0x00ffff) // Cyan
+        enemy.zigzagTime = 0
+        enemy.zigzagFrequency = 0.003
+        enemy.zigzagAmplitude = 50
+        break;
+      default: // basic
+        enemy.speed = Phaser.Math.Between(this.ENEMY_SPEED_MIN, this.ENEMY_SPEED_MAX)
+        break;
+    }
+  }
+
+  // Add this new method to apply repulsion between enemies
+  applyEnemyRepulsion(enemy, allEnemies) {
+    let repulsionX = 0
+    let repulsionY = 0
+    
+    allEnemies.forEach(otherEnemy => {
+      if (enemy === otherEnemy) return
+      
+      const distance = Phaser.Math.Distance.Between(
+        enemy.x, enemy.y, 
+        otherEnemy.x, otherEnemy.y
+      )
+      
+      if (distance < enemy.repulsionRange) {
+        // Calculate repulsion vector (away from other enemy)
+        const angle = Phaser.Math.Angle.Between(
+          otherEnemy.x, otherEnemy.y,
+          enemy.x, enemy.y
+        )
+        
+        // Strength inversely proportional to distance
+        const strength = (enemy.repulsionRange - distance) / enemy.repulsionRange * enemy.repulsionForce
+        
+        repulsionX += Math.cos(angle) * strength
+        repulsionY += Math.sin(angle) * strength
+      }
+    })
+    
+    // Apply repulsion to velocity
+    enemy.body.velocity.x += repulsionX * enemy.speed
+    enemy.body.velocity.y += repulsionY * enemy.speed
+  }
+
+  // Add this method to change enemy behavior occasionally
+  changeEnemyBehavior(enemy) {
+    // 30% chance to change waypoint
+    if (Math.random() < 0.3) {
+      this.changeEnemyWaypoint(enemy)
+    }
+    
+    // 20% chance to briefly target player directly
+    if (Math.random() < 0.2) {
+      enemy.originalWaypoint = enemy.targetWaypoint
+      enemy.targetPlayer = true
+      
+      // Reset after a short time
+      this.time.delayedCall(2000, () => {
+        if (enemy.active) {
+          enemy.targetPlayer = false
+          enemy.targetWaypoint = enemy.originalWaypoint || Phaser.Utils.Array.GetRandom(["top", "bottom", "left", "right"])
+        }
+      })
+    }
+  }
+
   /**
-   * Handle collectible item collection
+   * Handle coin collection
    * @param {Phaser.GameObjects.Sprite} player - The player sprite
-   * @param {Phaser.GameObjects.Sprite} collectible - The collected item
+   * @param {Phaser.GameObjects.Sprite} coin - The collected coin
    */
-  collectItem(player, collectible) {
-    // Disable the collected item
-    collectible.disableBody(true, true)
+  collectCoin(player, coin) {
+    // Disable the collected coin
+    coin.disableBody(true, true)
 
     // Update game state
     this.score += 10
-    this.remainingCollectibles--
+    this.remainingCoins--
 
     // Update UI
     this.events.emit("updateScore", this.score)
-    this.events.emit("updateCollectibles", this.remainingCollectibles)
+    this.events.emit("updateCoins", this.remainingCoins)
 
     // Add particle effect
-    this.collectParticles.setPosition(collectible.x, collectible.y)
+    this.collectParticles.setPosition(coin.x, coin.y)
     this.collectParticles.explode(10)
     
     // Combo system
@@ -743,20 +887,20 @@ class GameScene extends Phaser.Scene {
     
     // Bonus points for combo
     let comboBonus = Math.min(this.combo - 1, 5) * 5
-    this.score += 10 + comboBonus
+    this.score += comboBonus
     
     // Show combo text
     if (this.combo > 1) {
-      this.showComboText(collectible.x, collectible.y, this.combo)
+      this.showComboText(coin.x, coin.y, this.combo)
     }
     
     // Chance to spawn powerup
     if (Math.random() < this.POWERUP_CHANCE) {
-      this.spawnPowerup(collectible.x, collectible.y)
+      this.spawnPowerup(coin.x, coin.y)
     }
 
     // Check if wave is complete
-    if (this.remainingCollectibles === 0) {
+    if (this.remainingCoins === 0) {
       this.completeWave()
     }
   }
@@ -900,8 +1044,8 @@ class GameScene extends Phaser.Scene {
     this.wave++
     this.events.emit("updateWave", this.wave)
 
-    // Create new collectibles for this wave
-    this.createCollectibles()
+    // Create new coins for this wave
+    this.createCoins()
 
     // Reset the wave timer (could be adjusted for difficulty)
     this.resetWaveTimer()
@@ -975,6 +1119,21 @@ class GameScene extends Phaser.Scene {
     this.time.delayedCall(this.GAME_RESTART_DELAY, () => {
       this.scene.restart()
     })
+  }
+
+  /**
+   * Helper method to get waypoint by name
+   * @param {string} name - The name of the waypoint
+   * @returns {Phaser.GameObjects.Sprite} The waypoint sprite
+   */
+  getWaypointByName(name) {
+    switch (name) {
+      case "top": return this.waypointTop;
+      case "bottom": return this.waypointBottom;
+      case "left": return this.waypointLeft;
+      case "right": return this.waypointRight;
+      default: return null;
+    }
   }
 }
 
@@ -1057,7 +1216,7 @@ class UIScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
       .setDepth(11);
     
-    this.collectiblesText = this.add.text(width - padding, height - 35 - padding, "Collectibles: 0", textStyle)
+    this.coinsText = this.add.text(width - padding, height - 35 - padding, "Coins: 0", textStyle)
       .setOrigin(1, 0)
       .setDepth(11);
     
@@ -1132,9 +1291,9 @@ class UIScene extends Phaser.Scene {
     gameScene.events.off("updateScore", this.updateScore, this)
     gameScene.events.off("updateWave", this.updateWave, this)
     gameScene.events.off("updateTimer", this.updateTimer, this)
-    gameScene.events.off("updateCollectibles", this.updateCollectibles, this)
+    gameScene.events.off("updateCoins", this.updateCoins, this)
     gameScene.events.off("waveCompleted", this.showWaveAnnouncement, this)
-    gameScene.events.off("gameOver", this.displayGameOver, this)
+    gameScene.events.off("gameOver", this.showGameOver, this)
     gameScene.events.off("waveTimeUp", this.showWaveTimeUp, this)
   }
 
@@ -1146,9 +1305,9 @@ class UIScene extends Phaser.Scene {
     gameScene.events.on("updateScore", this.updateScore, this)
     gameScene.events.on("updateWave", this.updateWave, this)
     gameScene.events.on("updateTimer", this.updateTimer, this)
-    gameScene.events.on("updateCollectibles", this.updateCollectibles, this)
+    gameScene.events.on("updateCoins", this.updateCoins, this)
     gameScene.events.on("waveCompleted", this.showWaveAnnouncement, this)
-    gameScene.events.on("gameOver", this.displayGameOver, this)
+    gameScene.events.on("gameOver", this.showGameOver, this)
     gameScene.events.on("waveTimeUp", this.showWaveTimeUp, this)
   }
 
@@ -1187,11 +1346,11 @@ class UIScene extends Phaser.Scene {
   }
 
   /**
-   * Update collectibles counter display
-   * @param {number} count - Number of remaining collectibles
+   * Update coins count display
+   * @param {number} coins - Current coins count
    */
-  updateCollectibles(count) {
-    this.collectiblesText.setText("Collectibles: " + count)
+  updateCoins(coins) {
+    this.coinsText.setText(`Coins: ${coins}`)
   }
 
   /**
@@ -1245,11 +1404,11 @@ class UIScene extends Phaser.Scene {
    * @param {number} finalScore - Final score
    * @param {number} finalWave - Final wave reached
    */
-  displayGameOver(finalScore, finalWave) {
+  showGameOver(finalScore, finalWave) {
     this.scoreText.setText("Game Over! Final Score: " + finalScore)
     this.waveText.setText("Final Wave: " + finalWave)
     this.timerText.setText("")
-    this.collectiblesText.setText("")
+    this.coinsText.setText("")
   }
 
   /**
