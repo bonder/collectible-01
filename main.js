@@ -37,8 +37,15 @@ class GameScene extends Phaser.Scene {
     })
 
     this.generateTexture("enemySprite", 30, 30, (graphics) => {
-      graphics.fillStyle(0xff0000, 1) // Red color
-      graphics.fillTriangle(15, 0, 0, 30, 30, 30) // Draw a triangle
+      // Brighter red color with thicker white outline
+      graphics.lineStyle(3, 0xffffff, 1); // Thicker white outline
+      graphics.fillStyle(0xff3333, 1); // Brighter red color
+      graphics.fillTriangle(15, 0, 0, 30, 30, 30); // Draw a triangle
+      graphics.strokeTriangle(15, 0, 0, 30, 30, 30); // Add outline
+      
+      // Add a small white dot in the center for better visibility
+      graphics.fillStyle(0xffffff, 1);
+      graphics.fillCircle(15, 20, 3);
     })
 
     // Generate waypoint texture - small blue rectangle
@@ -57,6 +64,21 @@ class GameScene extends Phaser.Scene {
       graphics.fillStyle(0xffffdd, 1) // Light yellow
       graphics.fillCircle(3, 3, 3) // Small circle instead of star
     })
+
+    // Add floor tile texture
+    this.generateTexture("floorTile", 64, 64, (graphics) => {
+      // Base floor color
+      graphics.fillStyle(0x333344, 1);
+      graphics.fillRect(0, 0, 64, 64);
+      
+      // Add grid lines
+      graphics.lineStyle(1, 0x444455, 0.5);
+      graphics.strokeRect(0, 0, 64, 64);
+      
+      // Add some subtle details
+      graphics.fillStyle(0x3a3a4a, 0.7);
+      graphics.fillRect(5, 5, 54, 54);
+    });
   }
 
   /**
@@ -74,17 +96,14 @@ class GameScene extends Phaser.Scene {
   }
 
   create() {
-    // Initialize game state
-    this.initGameState()
-
-    // Create game objects and set up physics
-    this.createGameObjects()
-
-    // Set up input handling
-    this.cursors = this.input.keyboard.createCursorKeys()
-
-    // Update UI with initial values
-    this.updateUI()
+    // Create the floor first (so it's behind everything else)
+    this.createFloor();
+    
+    // Keep existing code
+    this.initGameState();
+    this.createGameObjects();
+    this.cursors = this.input.keyboard.createCursorKeys();
+    this.updateUI();
   }
 
   /**
@@ -281,6 +300,24 @@ class GameScene extends Phaser.Scene {
     
     // Update coins rotation (spinning animation)
     this.updateCoinsRotation()
+
+    // Add subtle floor animation
+    if (this.floorContainer && time % 100 < 16) {
+      // Occasionally pulse a random floor decoration
+      const decorations = this.floorContainer.getAll();
+      if (decorations.length > 0) {
+        const randomDecoration = Phaser.Utils.Array.GetRandom(decorations);
+        if (randomDecoration.type === 'Graphics') {
+          this.tweens.add({
+            targets: randomDecoration,
+            alpha: { from: randomDecoration.alpha, to: 0.5 },
+            duration: 500,
+            yoyo: true,
+            ease: 'Sine.easeInOut'
+          });
+        }
+      }
+    }
   }
   
   /**
@@ -739,29 +776,27 @@ class GameScene extends Phaser.Scene {
           gameHeight - margin
         )
 
-        // Randomly select enemy type
-        const enemyType = Phaser.Utils.Array.GetRandom(this.ENEMY_TYPES)
-        
-        // Create enemy at random position
+        // Ensure enemies spawn away from player
+        if (
+          Phaser.Math.Distance.Between(
+            position.x,
+            position.y,
+            this.player.x,
+            this.player.y
+          ) < this.SAFE_SPAWN_DISTANCE
+        ) {
+          i--
+          continue
+        }
+
+        // Create enemy
         const enemy = this.enemies.create(position.x, position.y, "enemySprite")
         
-        // Set enemy type-specific properties
+        // Choose a random enemy type
+        const enemyType = Phaser.Utils.Array.GetRandom(this.ENEMY_TYPES)
         this.setupEnemyByType(enemy, enemyType)
-
-        // Set physics properties
-        enemy.setCollideWorldBounds(true)
-        enemy.setBounce(1)
         
-        // Adjust the physics body
-        const bodyWidth = 20
-        const bodyHeight = 20
-        const offsetX = (30 - bodyWidth) / 2
-        const offsetY = (30 - bodyHeight) / 2 + 5
-        
-        enemy.body.setSize(bodyWidth, bodyHeight, true)
-        enemy.body.setOffset(offsetX, offsetY)
-
-        // Assign a random waypoint target to this enemy
+        // Choose a random waypoint to target
         enemy.targetWaypoint = Phaser.Utils.Array.GetRandom(waypoints)
         
         // Add repulsion from other enemies
@@ -801,6 +836,18 @@ class GameScene extends Phaser.Scene {
         break;
       default: // basic
         enemy.speed = Phaser.Math.Between(this.ENEMY_SPEED_MIN, this.ENEMY_SPEED_MAX)
+        // Use a much brighter red color for better visibility
+        enemy.setTint(0xff5555) // Brighter red
+        
+        // Create a pulsing effect for better visibility
+        this.tweens.add({
+          targets: enemy,
+          alpha: { from: 1, to: 0.7 },
+          duration: 500,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.easeInOut'
+        });
         break;
     }
   }
@@ -1134,6 +1181,109 @@ class GameScene extends Phaser.Scene {
       case "right": return this.waypointRight;
       default: return null;
     }
+  }
+
+  /**
+   * Create an interesting floor with tiles, patterns and ambient effects
+   */
+  createFloor() {
+    const width = this.cameras.main.width;
+    const height = this.cameras.main.height;
+    const tileSize = 64;
+    
+    // Create a container for all floor elements
+    this.floorContainer = this.add.container(0, 0);
+    
+    // Create the base tile pattern
+    for (let x = 0; x < width; x += tileSize) {
+      for (let y = 0; y < height; y += tileSize) {
+        const tile = this.add.image(x + tileSize/2, y + tileSize/2, 'floorTile');
+        
+        // Add slight random rotation for more organic feel
+        tile.setRotation(Math.random() * 0.1 - 0.05);
+        
+        // Add slight tint variation
+        const tintVariation = Phaser.Math.Between(-15, 15);
+        const r = Phaser.Math.Clamp(0x33 + tintVariation, 0, 255);
+        const g = Phaser.Math.Clamp(0x33 + tintVariation, 0, 255);
+        const b = Phaser.Math.Clamp(0x44 + tintVariation, 0, 255);
+        tile.setTint(Phaser.Display.Color.GetColor(r, g, b));
+        
+        this.floorContainer.add(tile);
+      }
+    }
+    
+    // Add decorative elements
+    this.addFloorDecorations();
+    
+    // Add ambient particles
+    this.createAmbientParticles();
+  }
+
+  /**
+   * Add decorative elements to the floor
+   */
+  addFloorDecorations() {
+    const width = this.cameras.main.width;
+    const height = this.cameras.main.height;
+    
+    // Add some decorative circles
+    for (let i = 0; i < 12; i++) {
+      const x = Phaser.Math.Between(0, width);
+      const y = Phaser.Math.Between(0, height);
+      const size = Phaser.Math.Between(100, 300);
+      
+      const circle = this.add.graphics();
+      circle.lineStyle(2, 0x4444aa, 0.2);
+      circle.strokeCircle(x, y, size);
+      
+      this.floorContainer.add(circle);
+    }
+    
+    // Add some subtle lines
+    for (let i = 0; i < 8; i++) {
+      const x1 = Phaser.Math.Between(0, width);
+      const y1 = Phaser.Math.Between(0, height);
+      const x2 = x1 + Phaser.Math.Between(-300, 300);
+      const y2 = y1 + Phaser.Math.Between(-300, 300);
+      
+      const line = this.add.graphics();
+      line.lineStyle(1, 0x5555aa, 0.15);
+      line.lineBetween(x1, y1, x2, y2);
+      
+      this.floorContainer.add(line);
+    }
+  }
+
+  /**
+   * Create ambient particles floating across the floor
+   */
+  createAmbientParticles() {
+    // Generate a small particle texture
+    this.generateTexture("ambientParticle", 4, 4, (graphics) => {
+      graphics.fillStyle(0x6666aa, 1);
+      graphics.fillCircle(2, 2, 2);
+    });
+    
+    // Create the particle emitter
+    this.ambientParticles = this.add.particles(0, 0, 'ambientParticle', {
+      x: 0,
+      y: 0,
+      lifespan: 10000,
+      speedX: { min: -10, max: 10 },
+      speedY: { min: -10, max: 10 },
+      scale: { start: 0.5, end: 0 },
+      alpha: { start: 0.2, end: 0 },
+      blendMode: 'ADD',
+      frequency: 200,
+      emitZone: {
+        type: 'random',
+        source: new Phaser.Geom.Rectangle(0, 0, this.cameras.main.width, this.cameras.main.height)
+      }
+    });
+    
+    // Add to floor container
+    this.floorContainer.add(this.ambientParticles);
   }
 }
 
