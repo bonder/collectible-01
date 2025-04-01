@@ -107,6 +107,26 @@ class GameScene extends Phaser.Scene {
   }
 
   /**
+   * Create UI elements
+   */
+  createUI() {
+    // Create the wave announcement text if it doesn't exist yet
+    if (!this.waveAnnouncement) {
+      this.waveAnnouncement = this.add.text(
+        this.cameras.main.width / 2,
+        this.cameras.main.height / 3,
+        "",
+        {
+          fontSize: '24px',
+          fontStyle: 'bold',
+          color: '#ffffff',
+          align: 'center'
+        }
+      ).setOrigin(0.5).setDepth(100).setVisible(false);
+    }
+  }
+
+  /**
    * Initialize game state variables
    */
   initGameState() {
@@ -123,6 +143,12 @@ class GameScene extends Phaser.Scene {
     this.combo = 0
     this.comboTimer = 0
     this.playerShield = false
+    
+    // Define announcement duration constant if not already defined
+    this.ANNOUNCEMENT_DURATION = 3000
+    
+    // Create UI elements including the wave announcement
+    this.createUI()
     
     this.resetWaveTimer()
   }
@@ -1111,14 +1137,119 @@ class GameScene extends Phaser.Scene {
    */
   waveTimeUp() {
     if (this.gameOver) {
-      return
+      return;
     }
 
-    // Notify UI that time is up
-    this.events.emit("waveTimeUp")
+    // Make remaining coins more noticeable
+    if (this.coins && this.coins.getChildren) {
+      this.coins.getChildren().forEach(coin => {
+        if (coin && coin.active) {
+          // Make remaining coins more noticeable with a pulsing effect
+          this.tweens.add({
+            targets: coin,
+            scale: { from: 1, to: 1.3 },
+            duration: 400,
+            yoyo: true,
+            repeat: 2,
+            ease: 'Sine.easeInOut'
+          });
+        }
+      });
+    }
 
-    // Player can still collect remaining items
-    // Game continues until all items are collected or player hits enemy
+    // Show a more prominent time's up announcement
+    this.showWaveTimeUp();
+
+    // Notify UI that time is up
+    this.events.emit("waveTimeUp");
+  }
+
+  /**
+   * Show time's up announcement with improved visibility
+   */
+  showWaveTimeUp() {
+    try {
+      // Create the wave announcement text if it doesn't exist yet
+      if (!this.waveAnnouncement) {
+        this.waveAnnouncement = this.add.text(
+          this.cameras.main.width / 2,
+          this.cameras.main.height / 3,
+          "TIME'S UP!",
+          {
+            fontSize: '32px',
+            fontStyle: 'bold',
+            color: '#ff5555',
+            align: 'center',
+            stroke: '#ffffff',
+            strokeThickness: 2
+          }
+        ).setOrigin(0.5).setDepth(101).setVisible(false);
+      }
+      
+      // Create a semi-transparent background for better text visibility
+      if (!this.timeUpBackground) {
+        this.timeUpBackground = this.add.rectangle(
+          this.cameras.main.width / 2,
+          this.cameras.main.height / 3,
+          300,
+          100,
+          0x000000,
+          0.7
+        ).setOrigin(0.5).setDepth(100);
+      } else {
+        this.timeUpBackground.setVisible(true);
+      }
+      
+      // Create subtitle text if it doesn't exist
+      if (!this.timeUpSubtext) {
+        this.timeUpSubtext = this.add.text(
+          this.cameras.main.width / 2,
+          this.cameras.main.height / 3 + 30,
+          "Collect remaining coins!",
+          {
+            fontSize: '18px',
+            fontStyle: 'bold',
+            color: '#ffffff',
+            align: 'center'
+          }
+        ).setOrigin(0.5).setDepth(101);
+      } else {
+        this.timeUpSubtext.setVisible(true);
+      }
+      
+      // Make sure all elements are visible
+      this.waveAnnouncement.setVisible(true);
+      
+      // Flash the screen red briefly to indicate time's up
+      this.cameras.main.flash(500, 255, 0, 0, 0.3);
+      
+      // Shake the camera slightly
+      this.cameras.main.shake(300, 0.005);
+      
+      // Add a scale animation
+      this.tweens.add({
+        targets: [this.waveAnnouncement, this.timeUpSubtext],
+        scale: { from: 0.8, to: 1 },
+        duration: 300,
+        ease: 'Back.easeOut'
+      });
+
+      // Hide the announcement after the specified duration
+      this.time.delayedCall(this.ANNOUNCEMENT_DURATION || 3000, () => {
+        this.tweens.add({
+          targets: [this.waveAnnouncement, this.timeUpSubtext, this.timeUpBackground],
+          alpha: 0,
+          duration: 500,
+          onComplete: () => {
+            if (this.waveAnnouncement) this.waveAnnouncement.setVisible(false).setAlpha(1);
+            if (this.timeUpSubtext) this.timeUpSubtext.setVisible(false).setAlpha(1);
+            if (this.timeUpBackground) this.timeUpBackground.setVisible(false).setAlpha(1);
+          }
+        });
+      });
+    } catch (error) {
+      console.error("Error in showWaveTimeUp:", error);
+    }
   }
 
   /**
