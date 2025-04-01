@@ -35,34 +35,27 @@ class GameScene extends Phaser.Scene {
       graphics.fillStyle(0xffff00, 1) // Yellow color
       graphics.fillCircle(10, 10, 10) // Draw a circle
     })
-
-    this.generateTexture("enemySprite", 30, 30, (graphics) => {
-      // Brighter red color with thicker white outline
-      graphics.lineStyle(3, 0xffffff, 1); // Thicker white outline
-      graphics.fillStyle(0xff3333, 1); // Brighter red color
-      graphics.fillTriangle(15, 0, 0, 30, 30, 30); // Draw a triangle
-      graphics.strokeTriangle(15, 0, 0, 30, 30, 30); // Add outline
-      
-      // Add a small white dot in the center for better visibility
-      graphics.fillStyle(0xffffff, 1);
-      graphics.fillCircle(15, 20, 3);
+    
+    // Generate particle textures
+    this.generateTexture("coinParticle", 8, 8, (graphics) => {
+      graphics.fillStyle(0xffff00, 1)
+      graphics.fillCircle(4, 4, 4)
+    })
+    
+    this.generateTexture("explosionSprite", 16, 16, (graphics) => {
+      graphics.fillStyle(0xff4400, 1)
+      graphics.fillCircle(8, 8, 8)
+    })
+    
+    this.generateTexture("coinSparkle", 6, 6, (graphics) => {
+      graphics.fillStyle(0xffffaa, 1)
+      graphics.fillCircle(3, 3, 3)
     })
 
     // Generate waypoint texture - small blue rectangle
     this.generateTexture("waypointSprite", 10, 10, (graphics) => {
       graphics.fillStyle(0x0088ff, 1) // Blue color
       graphics.fillRect(0, 0, 10, 10) // Draw a small rectangle
-    })
-
-    // Generate particle textures
-    this.generateTexture("coinParticle", 8, 8, (graphics) => {
-      graphics.fillStyle(0xffff00, 1) // Yellow color
-      graphics.fillCircle(4, 4, 4) // Small circle
-    })
-
-    this.generateTexture("coinSparkle", 6, 6, (graphics) => {
-      graphics.fillStyle(0xffffdd, 1) // Light yellow
-      graphics.fillCircle(3, 3, 3) // Small circle instead of star
     })
 
     // Add floor tile texture
@@ -115,14 +108,42 @@ class GameScene extends Phaser.Scene {
       this.waveAnnouncement = this.add.text(
         this.cameras.main.width / 2,
         this.cameras.main.height / 3,
-        "",
+        "WAVE 1",
         {
           fontSize: '24px',
           fontStyle: 'bold',
           color: '#ffffff',
+          align: 'center',
+          stroke: '#000000',
+          strokeThickness: 2
+        }
+      ).setOrigin(0.5).setDepth(100).setVisible(false);
+    }
+    
+    // Create time's up subtext
+    if (!this.timeUpSubtext) {
+      this.timeUpSubtext = this.add.text(
+        this.cameras.main.width / 2,
+        this.cameras.main.height / 3 + 40,
+        "Collect remaining items!",
+        {
+          fontSize: '20px',
+          color: '#ffffff',
           align: 'center'
         }
       ).setOrigin(0.5).setDepth(100).setVisible(false);
+    }
+    
+    // Create background for announcements
+    if (!this.timeUpBackground) {
+      this.timeUpBackground = this.add.rectangle(
+        this.cameras.main.width / 2,
+        this.cameras.main.height / 3,
+        300,
+        100,
+        0x000000,
+        0.7
+      ).setOrigin(0.5).setDepth(99).setVisible(false);
     }
   }
 
@@ -1276,12 +1297,6 @@ class GameScene extends Phaser.Scene {
     // Pause game physics
     this.physics.pause()
 
-    // Visual indication of game over
-    this.player.setTint(0xff0000)
-    if (this.player.anims.isPlaying) {
-      this.player.anims.stop()
-    }
-
     // Update game state
     this.gameOver = true
 
@@ -1290,13 +1305,164 @@ class GameScene extends Phaser.Scene {
       this.waveTimerEvent.remove()
     }
 
-    // Notify UI of game over
-    this.events.emit("gameOver", this.score, this.wave)
-
-    // Restart the game after a delay
-    this.time.delayedCall(this.GAME_RESTART_DELAY, () => {
-      this.scene.restart()
+    // Pac-Man style death animation
+    this.playDeathAnimation(player, () => {
+      // Show game over overlay
+      this.showGameOverOverlay(() => {
+        // Transition to GameOver scene
+        this.scene.start('GameOverScene', { 
+          score: this.score, 
+          wave: this.wave,
+          highScore: this.getHighScore()
+        })
+      })
     })
+  }
+
+  /**
+   * Play Pac-Man style death animation
+   * @param {Phaser.GameObjects.Sprite} player - The player sprite
+   * @param {Function} callback - Function to call when animation completes
+   */
+  playDeathAnimation(player, callback) {
+    // Stop any existing player animations
+    if (player.anims && player.anims.isPlaying) {
+      player.anims.stop()
+    }
+    
+    // Flash the player
+    this.tweens.add({
+      targets: player,
+      alpha: 0.3,
+      duration: 200,
+      yoyo: true,
+      repeat: 2,
+      onComplete: () => {
+        // Create rotation animation
+        this.tweens.add({
+          targets: player,
+          angle: 360 * 2, // Rotate 720 degrees (2 full rotations)
+          scaleX: 0,
+          scaleY: 0,
+          duration: 1000,
+          ease: 'Power1',
+          onUpdate: () => {
+            // Add particles during rotation
+            if (Math.random() > 0.8) {
+              this.explosionParticles.setPosition(player.x, player.y)
+              this.explosionParticles.explode(3)
+            }
+          },
+          onComplete: callback
+        })
+      }
+    })
+    
+    // Play a simple death sound using the Web Audio API
+    try {
+      const audioContext = this.sound.context;
+      if (audioContext) {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.type = 'sawtooth';
+        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(50, audioContext.currentTime + 1);
+        
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 1);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 1);
+      }
+    } catch (error) {
+      console.warn("Error playing death sound:", error);
+    }
+  }
+
+  /**
+   * Show game over overlay
+   * @param {Function} callback - Function to call when overlay completes
+   */
+  showGameOverOverlay(callback) {
+    // Create semi-transparent overlay
+    const overlay = this.add.rectangle(
+      this.cameras.main.width / 2,
+      this.cameras.main.height / 2,
+      this.cameras.main.width,
+      this.cameras.main.height,
+      0x000000,
+      0
+    ).setDepth(100)
+    
+    // Create game over text
+    const gameOverText = this.add.text(
+      this.cameras.main.width / 2,
+      this.cameras.main.height / 2 - 50,
+      'GAME OVER',
+      {
+        fontSize: '64px',
+        fontStyle: 'bold',
+        color: '#ff0000',
+        stroke: '#ffffff',
+        strokeThickness: 6,
+        align: 'center'
+      }
+    ).setOrigin(0.5).setDepth(101).setAlpha(0)
+    
+    // Create score text
+    const scoreText = this.add.text(
+      this.cameras.main.width / 2,
+      this.cameras.main.height / 2 + 20,
+      `Score: ${this.score}`,
+      {
+        fontSize: '32px',
+        color: '#ffffff',
+        align: 'center'
+      }
+    ).setOrigin(0.5).setDepth(101).setAlpha(0)
+    
+    // Fade in overlay
+    this.tweens.add({
+      targets: overlay,
+      alpha: 0.7,
+      duration: 1000,
+      ease: 'Power2',
+      onComplete: () => {
+        // Fade in text with slight delay between elements
+        this.tweens.add({
+          targets: [gameOverText, scoreText],
+          alpha: 1,
+          duration: 800,
+          ease: 'Power2',
+          delay: function (target, index) { return index * 300 },
+          onComplete: () => {
+            // Wait before transitioning to next scene
+            this.time.delayedCall(2000, callback)
+          }
+        })
+      }
+    })
+  }
+
+  /**
+   * Get the current high score from local storage
+   * @returns {number} The current high score
+   */
+  getHighScore() {
+    const storedScore = localStorage.getItem('highScore')
+    const highScore = storedScore ? parseInt(storedScore) : 0
+    
+    // Update high score if current score is higher
+    if (this.score > highScore) {
+      localStorage.setItem('highScore', this.score.toString())
+      return this.score
+    }
+    
+    return highScore
   }
 
   /**
@@ -1707,6 +1873,174 @@ class UIScene extends Phaser.Scene {
   }
 }
 
+/**
+ * Game Over Scene
+ */
+class GameOverScene extends Phaser.Scene {
+  constructor() {
+    super({ key: 'GameOverScene' })
+  }
+
+  init(data) {
+    this.score = data.score || 0
+    this.wave = data.wave || 1
+    this.highScore = data.highScore || 0
+  }
+
+  create() {
+    // Create background
+    this.add.rectangle(
+      this.cameras.main.width / 2,
+      this.cameras.main.height / 2,
+      this.cameras.main.width,
+      this.cameras.main.height,
+      0x000000
+    )
+    
+    // Create title
+    this.add.text(
+      this.cameras.main.width / 2,
+      100,
+      'GAME OVER',
+      {
+        fontSize: '64px',
+        fontStyle: 'bold',
+        color: '#ff0000',
+        stroke: '#ffffff',
+        strokeThickness: 6,
+        align: 'center'
+      }
+    ).setOrigin(0.5)
+    
+    // Create score text
+    this.add.text(
+      this.cameras.main.width / 2,
+      200,
+      `Final Score: ${this.score}`,
+      {
+        fontSize: '32px',
+        color: '#ffffff',
+        align: 'center'
+      }
+    ).setOrigin(0.5)
+    
+    // Create wave text
+    this.add.text(
+      this.cameras.main.width / 2,
+      250,
+      `Wave Reached: ${this.wave}`,
+      {
+        fontSize: '28px',
+        color: '#ffffff',
+        align: 'center'
+      }
+    ).setOrigin(0.5)
+    
+    // Create high score text with animation if it's a new high score
+    const highScoreText = this.add.text(
+      this.cameras.main.width / 2,
+      320,
+      `High Score: ${this.highScore}`,
+      {
+        fontSize: '36px',
+        fontStyle: 'bold',
+        color: this.score >= this.highScore ? '#ffff00' : '#ffffff',
+        align: 'center'
+      }
+    ).setOrigin(0.5)
+    
+    // Add pulsing animation if it's a new high score
+    if (this.score >= this.highScore) {
+      this.add.text(
+        this.cameras.main.width / 2,
+        370,
+        'NEW HIGH SCORE!',
+        {
+          fontSize: '24px',
+          fontStyle: 'bold',
+          color: '#ffff00',
+          align: 'center'
+        }
+      ).setOrigin(0.5)
+      
+      this.tweens.add({
+        targets: highScoreText,
+        scale: { from: 1, to: 1.1 },
+        duration: 800,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      })
+    }
+    
+    // Create restart button
+    const restartButton = this.add.rectangle(
+      this.cameras.main.width / 2,
+      450,
+      200,
+      60,
+      0x4444ff,
+      1
+    ).setInteractive()
+    
+    // Add text to button
+    const restartText = this.add.text(
+      this.cameras.main.width / 2,
+      450,
+      'RESTART',
+      {
+        fontSize: '28px',
+        fontStyle: 'bold',
+        color: '#ffffff',
+        align: 'center'
+      }
+    ).setOrigin(0.5)
+    
+    // Add hover effect
+    restartButton.on('pointerover', () => {
+      restartButton.fillColor = 0x6666ff
+      restartText.setScale(1.1)
+    })
+    
+    restartButton.on('pointerout', () => {
+      restartButton.fillColor = 0x4444ff
+      restartText.setScale(1)
+    })
+    
+    // Add click handler
+    restartButton.on('pointerdown', () => {
+      this.restartGame()
+    })
+    
+    // Add keyboard handler for 'R' key
+    this.input.keyboard.on('keydown-R', () => {
+      this.restartGame()
+    })
+    
+    // Add instruction text
+    this.add.text(
+      this.cameras.main.width / 2,
+      520,
+      'Press R to restart',
+      {
+        fontSize: '20px',
+        color: '#aaaaaa',
+        align: 'center'
+      }
+    ).setOrigin(0.5)
+  }
+  
+  restartGame() {
+    // Add button press effect
+    this.cameras.main.flash(300, 0, 0, 0)
+    
+    // Restart the game
+    this.time.delayedCall(300, () => {
+      this.scene.start('GameScene')
+    })
+  }
+}
+
 // Game configuration
 const config = {
   type: Phaser.AUTO,
@@ -1720,7 +2054,7 @@ const config = {
       debug: false, // Debug mode disabled
     },
   },
-  scene: [GameScene, UIScene], // Include both scenes
+  scene: [GameScene, UIScene, GameOverScene], // Include all scenes
   parent: "game-container",
 }
 
