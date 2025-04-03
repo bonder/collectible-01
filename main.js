@@ -1397,10 +1397,62 @@ class GameScene extends Phaser.Scene {
     
     this.shieldContainer = this.add.container(this.player.x, this.player.y, [shield])
     
+    // Update shield position with player
+    this.events.on('update', () => {
+      if (this.shieldContainer && this.shieldContainer.active) {
+        this.shieldContainer.setPosition(this.player.x, this.player.y)
+      }
+    })
+    
     // Shield lasts for 10 seconds
-    this.time.delayedCall(10000, () => {
+    const totalDuration = 10000
+    const warningTime = 3000 // Start warning 3 seconds before expiration
+    
+    // Start warning blink when shield is about to expire
+    this.time.delayedCall(totalDuration - warningTime, () => {
+      if (this.shieldContainer && this.shieldContainer.active) {
+        // Create blinking effect
+        this.shieldWarningTween = this.tweens.add({
+          targets: shield,
+          alpha: { from: 0.3, to: 0.8 },
+          duration: 200,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Linear'
+        })
+        
+        // Also change color to red to indicate danger
+        this.tweens.add({
+          targets: shield,
+          fillColor: { from: 0x00ffff, to: 0xff0000 },
+          strokeColor: { from: 0x00ffff, to: 0xff0000 },
+          duration: warningTime,
+          ease: 'Linear'
+        })
+      }
+    })
+    
+    // Shield expires after total duration
+    this.time.delayedCall(totalDuration, () => {
       this.playerShield = false
-      this.shieldContainer.destroy()
+      if (this.shieldWarningTween) {
+        this.shieldWarningTween.stop()
+      }
+      if (this.shieldContainer && this.shieldContainer.active) {
+        // Add a final flash effect before destroying
+        this.tweens.add({
+          targets: shield,
+          alpha: { from: 0.8, to: 0 },
+          scale: { from: 1, to: 1.5 },
+          duration: 300,
+          ease: 'Power2',
+          onComplete: () => {
+            if (this.shieldContainer && this.shieldContainer.active) {
+              this.shieldContainer.destroy()
+            }
+          }
+        })
+      }
     })
   }
 
