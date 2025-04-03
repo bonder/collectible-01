@@ -36,6 +36,12 @@ class GameScene extends Phaser.Scene {
       graphics.fillCircle(10, 10, 10) // Draw a circle
     })
     
+    // Generate enemy sprite texture
+    this.generateTexture("enemySprite", 30, 30, (graphics) => {
+      graphics.fillStyle(0xff0000, 1) // Red color
+      graphics.fillCircle(15, 15, 15) // Draw a circle
+    })
+    
     // Generate particle textures
     this.generateTexture("coinParticle", 8, 8, (graphics) => {
       graphics.fillStyle(0xffff00, 1)
@@ -75,17 +81,32 @@ class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Helper method to generate textures and clean up graphics objects
-   * @param {string} key - Texture key
-   * @param {number} width - Texture width
-   * @param {number} height - Texture height
-   * @param {Function} drawFunction - Function to draw the graphics
+   * Helper method to generate a texture
+   * @param {string} key - The texture key
+   * @param {number} width - The texture width
+   * @param {number} height - The texture height
+   * @param {Function} callback - The drawing callback
    */
-  generateTexture(key, width, height, drawFunction) {
+  generateTexture(key, width, height, callback) {
+    // Check if texture already exists
+    if (this.textures.exists(key)) {
+      return
+    }
+    
+    // Create a graphics object for drawing
     const graphics = this.make.graphics({ x: 0, y: 0, add: false })
-    drawFunction(graphics)
+    
+    // Call the drawing callback
+    callback(graphics)
+    
+    // Generate the texture from the graphics object
     graphics.generateTexture(key, width, height)
+    
+    // Destroy the graphics object
     graphics.destroy()
+    
+    // Log success
+    console.log(`Generated texture: ${key}`)
   }
 
   create() {
@@ -836,66 +857,154 @@ class GameScene extends Phaser.Scene {
           continue
         }
 
-        // Create enemy
+        // Create enemy sprite
         const enemy = this.enemies.create(position.x, position.y, "enemySprite")
         
-        // Choose a random enemy type
-        const enemyType = Phaser.Utils.Array.GetRandom(this.ENEMY_TYPES)
-        this.setupEnemyByType(enemy, enemyType)
+        // Ensure ALL enemies have a bright outline
+        this.addEnemyOutline(enemy)
         
-        // Choose a random waypoint to target
+        // Assign random waypoint
         enemy.targetWaypoint = Phaser.Utils.Array.GetRandom(waypoints)
         
-        // Add repulsion from other enemies
-        enemy.repulsionRange = 60
-        enemy.repulsionForce = 0.5
+        // Set next behavior change time
+        enemy.nextBehaviorChange = this.time.now + this.ENEMY_BEHAVIOR_CHANGE_TIME
         
-        // Add behavior change timer
-        enemy.nextBehaviorChange = this.time.now + Phaser.Math.Between(2000, this.ENEMY_BEHAVIOR_CHANGE_TIME)
-
-        // Set initial velocity
-        enemy.body.setVelocity(0, 0)
+        // Assign random enemy type
+        const types = ["basic", "fast", "large", "zigzag"]
+        const type = Phaser.Utils.Array.GetRandom(types)
+        this.setupEnemyByType(enemy, type)
       }
     }
+  }
+
+  /**
+   * Add a bright outline to enemy for maximum visibility
+   * @param {Phaser.GameObjects.Sprite} enemy - The enemy sprite
+   */
+  addEnemyOutline(enemy) {
+    // Create a bright white outline that follows the enemy
+    const outline = this.add.sprite(enemy.x, enemy.y, 'enemySprite')
+    outline.setTint(0xffffff)  // Pure white
+    outline.setAlpha(0.8)
+    outline.setScale(1.2)  // Slightly larger than the enemy
+    outline.setDepth(enemy.depth - 1)  // Behind the enemy
+    
+    // Store reference to the outline on the enemy
+    enemy.outline = outline
+    
+    // Update the outline position in the update loop
+    this.events.on('update', () => {
+      if (enemy.active && outline.active) {
+        outline.setPosition(enemy.x, enemy.y)
+        outline.rotation = enemy.rotation
+      } else if (!enemy.active && outline.active) {
+        outline.destroy()
+      }
+    })
   }
 
   // Add this new method to set up enemy types
   setupEnemyByType(enemy, type) {
     enemy.type = type
     
+    // Make ALL enemies have extremely bright, high-contrast colors
     switch(type) {
       case 'fast':
         enemy.speed = Phaser.Math.Between(this.ENEMY_SPEED_MIN + 40, this.ENEMY_SPEED_MAX + 40)
-        enemy.setTint(0xff8800) // Orange
+        enemy.setTint(0xffff00)  // Bright yellow
         enemy.setScale(0.8)
         break;
       case 'large':
         enemy.speed = Phaser.Math.Between(this.ENEMY_SPEED_MIN - 20, this.ENEMY_SPEED_MAX - 20)
-        enemy.setTint(0xff00ff) // Purple
+        enemy.setTint(0xff00ff)  // Bright magenta
         enemy.setScale(1.4)
         break;
       case 'zigzag':
         enemy.speed = Phaser.Math.Between(this.ENEMY_SPEED_MIN, this.ENEMY_SPEED_MAX)
-        enemy.setTint(0x00ffff) // Cyan
+        enemy.setTint(0x00ffff)  // Bright cyan
         enemy.zigzagTime = 0
         enemy.zigzagFrequency = 0.003
         enemy.zigzagAmplitude = 50
         break;
       default: // basic
         enemy.speed = Phaser.Math.Between(this.ENEMY_SPEED_MIN, this.ENEMY_SPEED_MAX)
-        // Use a much brighter red color for better visibility
-        enemy.setTint(0xff5555) // Brighter red
-        
-        // Create a pulsing effect for better visibility
-        this.tweens.add({
-          targets: enemy,
-          alpha: { from: 1, to: 0.7 },
-          duration: 500,
-          yoyo: true,
-          repeat: -1,
-          ease: 'Sine.easeInOut'
-        });
-        break;
+        enemy.setTint(0xff3333)  // Bright red
+    }
+    
+    // Add pulsing animation to all enemies for better visibility
+    this.addEnemyPulseAnimation(enemy)
+    
+    // Add glow effect to all enemies
+    this.addEnemyGlow(enemy, enemy.tintTopLeft)
+  }
+
+  /**
+   * Add glow effect to enemy for better visibility
+   * @param {Phaser.GameObjects.Sprite} enemy - The enemy sprite
+   * @param {number} color - The color of the glow
+   */
+  addEnemyGlow(enemy, color) {
+    // Create a glow sprite that follows the enemy
+    const glow = this.add.sprite(enemy.x, enemy.y, 'enemySprite')
+    glow.setTint(color)
+    glow.setAlpha(0.6)  // Increased alpha
+    glow.setScale(enemy.scale * 1.5)  // Larger glow
+    glow.setBlendMode(Phaser.BlendModes.ADD)
+    glow.setDepth(enemy.depth - 0.5)  // Between enemy and outline
+    
+    // Store reference to the glow on the enemy
+    enemy.glowEffect = glow
+    
+    // Update the glow position in the update loop
+    this.events.on('update', () => {
+      if (enemy.active && glow.active) {
+        glow.setPosition(enemy.x, enemy.y)
+        glow.rotation = enemy.rotation
+      } else if (!enemy.active && glow.active) {
+        glow.destroy()
+      }
+    })
+  }
+
+  /**
+   * Add pulsing animation to enemy for better visibility
+   * @param {Phaser.GameObjects.Sprite} enemy - The enemy sprite
+   */
+  addEnemyPulseAnimation(enemy) {
+    // Create a more dramatic pulsing animation
+    this.tweens.add({
+      targets: enemy,
+      alpha: { from: 1, to: 0.7 },
+      duration: 400,  // Faster pulse
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    })
+    
+    // If the enemy has a glow effect, make it pulse in opposite phase
+    if (enemy.glowEffect) {
+      this.tweens.add({
+        targets: enemy.glowEffect,
+        alpha: { from: 0.6, to: 0.9 },  // More dramatic pulse
+        scale: { from: enemy.scale * 1.5, to: enemy.scale * 1.8 },  // Size pulse
+        duration: 400,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      })
+    }
+    
+    // If the enemy has an outline, make it pulse too
+    if (enemy.outline) {
+      this.tweens.add({
+        targets: enemy.outline,
+        alpha: { from: 0.8, to: 1 },
+        scale: { from: 1.2, to: 1.3 },
+        duration: 400,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      })
     }
   }
 
@@ -979,13 +1088,20 @@ class GameScene extends Phaser.Scene {
     this.combo++
     this.comboTimer = 2000 // Reset combo timer
     
-    // Bonus points for combo
-    let comboBonus = Math.min(this.combo - 1, 5) * 5
-    this.score += comboBonus
+    // Enhanced combo bonus calculation - more rewarding
+    let comboBonus = 0
+    if (this.combo > 1) {
+      // Exponential bonus growth: 5, 15, 30, 50, 75, etc.
+      comboBonus = Math.floor(Math.pow(this.combo, 1.5)) * 5
+      this.score += comboBonus
+      
+      // Play combo sound with increasing pitch
+      this.playComboSound(this.combo)
+    }
     
     // Show combo text
     if (this.combo > 1) {
-      this.showComboText(coin.x, coin.y, this.combo)
+      this.showEnhancedComboText(coin.x, coin.y, this.combo, comboBonus)
     }
     
     // Chance to spawn powerup
@@ -999,30 +1115,191 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Play combo sound with increasing pitch
+   * @param {number} combo - Current combo count
+   */
+  playComboSound(combo) {
+    try {
+      const audioContext = this.sound.context;
+      if (audioContext) {
+        // Create oscillator for combo sound
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        // Higher pitch for higher combos (capped at a reasonable level)
+        const basePitch = 300;
+        const maxPitchMultiplier = 3;
+        const pitchMultiplier = Math.min(1 + (combo - 1) * 0.2, maxPitchMultiplier);
+        
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(basePitch * pitchMultiplier, audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(
+          basePitch * pitchMultiplier * 1.5, 
+          audioContext.currentTime + 0.1
+        );
+        
+        gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.2);
+      }
+    } catch (error) {
+      console.warn("Error playing combo sound:", error);
+    }
+  }
+
+  /**
+   * Show enhanced combo text with animations
+   * @param {number} x - X position
+   * @param {number} y - Y position
+   * @param {number} combo - Current combo count
+   * @param {number} bonus - Bonus points awarded
+   */
+  showEnhancedComboText(x, y, combo, bonus) {
+    // Create container for combo text elements
+    const comboContainer = this.add.container(x, y - 20);
+    
+    // Add combo text with larger font for higher combos
+    const fontSize = Math.min(18 + (combo - 1) * 2, 36);
+    const comboText = this.add.text(0, 0, `${combo}x COMBO!`, {
+      fontSize: `${fontSize}px`,
+      fontStyle: 'bold',
+      color: '#ffff00',
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(0.5);
+    
+    // Add bonus points text
+    const bonusText = this.add.text(0, fontSize, `+${bonus}`, {
+      fontSize: '16px',
+      fontStyle: 'bold',
+      color: '#00ffff',
+      stroke: '#000000',
+      strokeThickness: 2
+    }).setOrigin(0.5);
+    
+    // Add elements to container
+    comboContainer.add([comboText, bonusText]);
+    
+    // Scale based on combo (bigger for higher combos)
+    const scale = Math.min(1 + (combo - 1) * 0.1, 1.5);
+    comboContainer.setScale(0);
+    
+    // Create a more dynamic animation sequence
+    this.tweens.add({
+      targets: comboContainer,
+      scale: { from: 0, to: scale },
+      duration: 200,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        // Add a slight bounce effect
+        this.tweens.add({
+          targets: comboContainer,
+          scale: { from: scale, to: scale * 1.2 },
+          duration: 100,
+          yoyo: true,
+          ease: 'Sine.easeInOut',
+          onComplete: () => {
+            // Float upward and fade out
+            this.tweens.add({
+              targets: comboContainer,
+              y: y - 80,
+              alpha: 0,
+              scale: scale * 1.5,
+              duration: 800,
+              ease: 'Power2',
+              onComplete: () => comboContainer.destroy()
+            });
+          }
+        });
+      }
+    });
+    
+    // Add particle burst for higher combos
+    if (combo >= 3) {
+      const particleCount = Math.min(combo * 3, 20);
+      this.collectParticles.setPosition(x, y);
+      this.collectParticles.explode(particleCount);
+    }
+    
+    // Screen shake for really high combos
+    if (combo >= 5) {
+      const shakeIntensity = Math.min(0.005 * combo, 0.03);
+      this.cameras.main.shake(300, shakeIntensity);
+    }
+  }
+
   updateComboSystem(delta) {
     if (this.combo > 1) {
-      this.comboTimer -= delta
+      this.comboTimer -= delta;
+      
+      // Visual indicator for combo timer
+      if (!this.comboTimerIndicator && this.player) {
+        this.comboTimerIndicator = this.add.graphics();
+        this.comboTimerIndicator.setDepth(100);
+      }
+      
+      if (this.comboTimerIndicator) {
+        this.comboTimerIndicator.clear();
+        
+        // Draw combo timer ring around player
+        const progress = this.comboTimer / 2000;
+        if (progress > 0) {
+          this.comboTimerIndicator.lineStyle(3, 0xffff00, 0.7);
+          this.comboTimerIndicator.beginPath();
+          this.comboTimerIndicator.arc(
+            this.player.x, this.player.y,
+            30, // radius
+            -Math.PI/2, // start angle (top)
+            -Math.PI/2 + (2 * Math.PI * progress), // end angle
+            false
+          );
+          this.comboTimerIndicator.strokePath();
+        }
+      }
+      
       if (this.comboTimer <= 0) {
-        this.combo = 0
+        // Reset combo with visual effect if it was significant
+        if (this.combo >= 3) {
+          this.showComboResetText();
+        }
+        this.combo = 0;
+        
+        // Remove combo timer indicator
+        if (this.comboTimerIndicator) {
+          this.comboTimerIndicator.clear();
+        }
       }
     }
   }
 
-  showComboText(x, y, combo) {
-    const comboText = this.add.text(x, y - 20, `${combo}x COMBO!`, {
-      fontSize: '18px',
-      fontStyle: 'bold',
-      color: '#ffff00'
-    }).setOrigin(0.5)
-    
-    this.tweens.add({
-      targets: comboText,
-      y: y - 50,
-      alpha: 0,
-      duration: 800,
-      ease: 'Power2',
-      onComplete: () => comboText.destroy()
-    })
+  /**
+   * Show text when a significant combo is reset
+   */
+  showComboResetText() {
+    if (this.player) {
+      const text = this.add.text(this.player.x, this.player.y - 40, 'COMBO RESET!', {
+        fontSize: '18px',
+        fontStyle: 'bold',
+        color: '#ff6666',
+        stroke: '#000000',
+        strokeThickness: 3
+      }).setOrigin(0.5);
+      
+      this.tweens.add({
+        targets: text,
+        alpha: 0,
+        y: this.player.y - 70,
+        duration: 1000,
+        ease: 'Power2',
+        onComplete: () => text.destroy()
+      });
+    }
   }
 
   spawnPowerup(x, y) {
@@ -1491,7 +1768,17 @@ class GameScene extends Phaser.Scene {
     // Create a container for all floor elements
     this.floorContainer = this.add.container(0, 0);
     
-    // Create the base tile pattern
+    // Create a MUCH darker base background for better contrast with enemies
+    const background = this.add.rectangle(
+      width/2, 
+      height/2, 
+      width, 
+      height, 
+      0x000011  // Almost black with slight blue tint
+    );
+    this.floorContainer.add(background);
+    
+    // Create the base tile pattern with very dark colors
     for (let x = 0; x < width; x += tileSize) {
       for (let y = 0; y < height; y += tileSize) {
         const tile = this.add.image(x + tileSize/2, y + tileSize/2, 'floorTile');
@@ -1499,22 +1786,48 @@ class GameScene extends Phaser.Scene {
         // Add slight random rotation for more organic feel
         tile.setRotation(Math.random() * 0.1 - 0.05);
         
-        // Add slight tint variation
-        const tintVariation = Phaser.Math.Between(-15, 15);
-        const r = Phaser.Math.Clamp(0x33 + tintVariation, 0, 255);
-        const g = Phaser.Math.Clamp(0x33 + tintVariation, 0, 255);
-        const b = Phaser.Math.Clamp(0x44 + tintVariation, 0, 255);
+        // Use very dark tints for better enemy contrast
+        const tintVariation = Phaser.Math.Between(-5, 5);
+        const r = Phaser.Math.Clamp(0x11 + tintVariation, 0, 255);
+        const g = Phaser.Math.Clamp(0x11 + tintVariation, 0, 255);
+        const b = Phaser.Math.Clamp(0x22 + tintVariation, 0, 255);
         tile.setTint(Phaser.Display.Color.GetColor(r, g, b));
+        
+        // Reduce opacity to make the floor less prominent
+        tile.setAlpha(0.5);
         
         this.floorContainer.add(tile);
       }
     }
     
-    // Add decorative elements
-    this.addFloorDecorations();
+    // Add subtle grid lines for better spatial awareness
+    this.addFloorGrid(width, height, tileSize * 2);
+  }
+
+  /**
+   * Add grid lines to the floor for better spatial awareness
+   * @param {number} width - Floor width
+   * @param {number} height - Floor height
+   * @param {number} gridSize - Size of grid cells
+   */
+  addFloorGrid(width, height, gridSize) {
+    const graphics = this.add.graphics();
+    graphics.lineStyle(1, 0x3333aa, 0.2);
     
-    // Add ambient particles
-    this.createAmbientParticles();
+    // Draw vertical lines
+    for (let x = 0; x <= width; x += gridSize) {
+      graphics.moveTo(x, 0);
+      graphics.lineTo(x, height);
+    }
+    
+    // Draw horizontal lines
+    for (let y = 0; y <= height; y += gridSize) {
+      graphics.moveTo(0, y);
+      graphics.lineTo(width, y);
+    }
+    
+    graphics.strokePath();
+    this.floorContainer.add(graphics);
   }
 
   /**
@@ -1524,31 +1837,40 @@ class GameScene extends Phaser.Scene {
     const width = this.cameras.main.width;
     const height = this.cameras.main.height;
     
-    // Add some decorative circles
-    for (let i = 0; i < 12; i++) {
-      const x = Phaser.Math.Between(0, width);
-      const y = Phaser.Math.Between(0, height);
-      const size = Phaser.Math.Between(100, 300);
-      
-      const circle = this.add.graphics();
-      circle.lineStyle(2, 0x4444aa, 0.2);
-      circle.strokeCircle(x, y, size);
-      
-      this.floorContainer.add(circle);
-    }
+    // Add fewer decorations to reduce visual clutter
+    const decorationCount = 15;
     
-    // Add some subtle lines
-    for (let i = 0; i < 8; i++) {
-      const x1 = Phaser.Math.Between(0, width);
-      const y1 = Phaser.Math.Between(0, height);
-      const x2 = x1 + Phaser.Math.Between(-300, 300);
-      const y2 = y1 + Phaser.Math.Between(-300, 300);
+    for (let i = 0; i < decorationCount; i++) {
+      const x = Phaser.Math.Between(50, width - 50);
+      const y = Phaser.Math.Between(50, height - 50);
       
-      const line = this.add.graphics();
-      line.lineStyle(1, 0x5555aa, 0.15);
-      line.lineBetween(x1, y1, x2, y2);
+      const graphics = this.add.graphics();
       
-      this.floorContainer.add(line);
+      // Use more subtle decoration colors
+      const decorationType = Phaser.Math.Between(0, 2);
+      
+      switch (decorationType) {
+        case 0: // Circle
+          graphics.fillStyle(0x2233aa, 0.15);
+          graphics.fillCircle(0, 0, Phaser.Math.Between(5, 15));
+          break;
+        case 1: // Rectangle
+          graphics.fillStyle(0x223366, 0.15);
+          const size = Phaser.Math.Between(10, 30);
+          graphics.fillRect(-size/2, -size/2, size, size);
+          break;
+        case 2: // Line
+          graphics.lineStyle(2, 0x334477, 0.15);
+          const length = Phaser.Math.Between(20, 40);
+          const angle = Phaser.Math.Between(0, Math.PI * 2);
+          graphics.moveTo(0, 0);
+          graphics.lineTo(Math.cos(angle) * length, Math.sin(angle) * length);
+          graphics.strokePath();
+          break;
+      }
+      
+      graphics.setPosition(x, y);
+      this.floorContainer.add(graphics);
     }
   }
 
@@ -1558,11 +1880,11 @@ class GameScene extends Phaser.Scene {
   createAmbientParticles() {
     // Generate a small particle texture
     this.generateTexture("ambientParticle", 4, 4, (graphics) => {
-      graphics.fillStyle(0x6666aa, 1);
+      graphics.fillStyle(0x6666ff, 1);
       graphics.fillCircle(2, 2, 2);
     });
     
-    // Create the particle emitter
+    // Create the particle emitter with fewer particles
     this.ambientParticles = this.add.particles(0, 0, 'ambientParticle', {
       x: 0,
       y: 0,
@@ -1570,9 +1892,9 @@ class GameScene extends Phaser.Scene {
       speedX: { min: -10, max: 10 },
       speedY: { min: -10, max: 10 },
       scale: { start: 0.5, end: 0 },
-      alpha: { start: 0.2, end: 0 },
+      alpha: { start: 0.15, end: 0 },  // Reduced alpha
       blendMode: 'ADD',
-      frequency: 200,
+      frequency: 300,  // Reduced frequency
       emitZone: {
         type: 'random',
         source: new Phaser.Geom.Rectangle(0, 0, this.cameras.main.width, this.cameras.main.height)
