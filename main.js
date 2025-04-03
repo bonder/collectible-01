@@ -1901,7 +1901,7 @@ class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Setup border glow effect using Phaser's FX system with proper GameObjects
+   * Setup border glow effect using Phaser's filter system with proper GameObjects
    */
   setupBorderGlow() {
     // Create a border container
@@ -1911,13 +1911,10 @@ class GameScene extends Phaser.Scene {
     // First create a texture for our borders
     this.createBorderTexture('borderTexture', width, height);
     
-    // Create the main border using a sprite (which is a GameObject with FX)
+    // Create the main border using a sprite
     const border = this.add.sprite(width/2, height/2, 'borderTexture');
     border.setDepth(1000);
-    border.enableFilters()
-    
-    // Add padding to accommodate the glow effect
-    //border.preFX.setPadding(16);
+    border.enableFilters(); // Enable filters for this GameObject
     
     // Add glow effect to the border
     const glowFX = border.filters.internal.addGlow(0x00ffff, 8, 2, false);
@@ -1927,10 +1924,9 @@ class GameScene extends Phaser.Scene {
     const outerBorder = this.add.sprite(width/2, height/2, 'outerBorderTexture');
     outerBorder.setDepth(999);
     outerBorder.setAlpha(0.7);
-    outerBorder.enableFilters()
+    outerBorder.enableFilters(); // Enable filters
     
-    // Add padding and glow to the outer border
-    //outerBorder.preFX.setPadding(16);
+    // Add glow to the outer border
     const outerGlowFX = outerBorder.filters.internal.addGlow(0x00ffff, 6, 0, false);
     
     // Animate the glow effects
@@ -2000,14 +1996,13 @@ class GameScene extends Phaser.Scene {
     this.createCornerGlowTexture('cornerGlowTexture', 40);
     
     corners.forEach(corner => {
-      // Create a sprite at each corner (which is a GameObject with FX)
+      // Create a sprite at each corner
       const cornerGlow = this.add.sprite(corner.x, corner.y, 'cornerGlowTexture');
       cornerGlow.setDepth(998);
       cornerGlow.setAlpha(0.3);
-      cornerGlow.enableFilters()
+      cornerGlow.enableFilters(); // Enable filters
       
       // Add a stronger glow effect to the corner
-      //cornerGlow.preFX.setPadding(20);
       const cornerGlowFX = cornerGlow.filters.internal.addGlow(0x00ffff, 10, 5, false);
       
       // Add a post-processing glow for extra effect
