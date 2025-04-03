@@ -36,10 +36,32 @@ class GameScene extends Phaser.Scene {
       graphics.fillCircle(10, 10, 10) // Draw a circle
     })
     
-    // Generate enemy sprite texture
-    this.generateTexture("enemySprite", 30, 30, (graphics) => {
+    // Generate different enemy sprite textures based on type
+    this.generateTexture("basicEnemySprite", 30, 30, (graphics) => {
       graphics.fillStyle(0xff0000, 1) // Red color
-      graphics.fillCircle(15, 15, 15) // Draw a circle
+      graphics.fillTriangle(15, 0, 30, 30, 0, 30) // Triangle pointing up
+    })
+    
+    this.generateTexture("fastEnemySprite", 30, 30, (graphics) => {
+      graphics.fillStyle(0xffff00, 1) // Yellow color
+      graphics.fillTriangle(30, 15, 0, 0, 0, 30) // Triangle pointing right
+    })
+    
+    this.generateTexture("largeEnemySprite", 40, 40, (graphics) => {
+      graphics.fillStyle(0xff00ff, 1) // Magenta color
+      graphics.fillTriangle(20, 0, 40, 40, 0, 40) // Larger triangle
+    })
+    
+    this.generateTexture("zigzagEnemySprite", 30, 30, (graphics) => {
+      graphics.fillStyle(0x00ffff, 1) // Cyan color
+      // Draw zigzag pattern inside triangle
+      graphics.fillTriangle(15, 0, 30, 30, 0, 30)
+      graphics.lineStyle(2, 0x000000, 1)
+      graphics.beginPath()
+      graphics.moveTo(5, 25)
+      graphics.lineTo(15, 15)
+      graphics.lineTo(25, 25)
+      graphics.stroke()
     })
     
     // Generate particle textures
@@ -857,11 +879,24 @@ class GameScene extends Phaser.Scene {
           continue
         }
 
-        // Create enemy sprite
-        const enemy = this.enemies.create(position.x, position.y, "enemySprite")
+        // Assign random enemy type
+        const types = ["basic", "fast", "large", "zigzag"]
+        const type = Phaser.Utils.Array.GetRandom(types)
+        
+        // Create enemy sprite with appropriate texture
+        let enemyTexture
+        switch(type) {
+          case 'fast': enemyTexture = 'fastEnemySprite'; break;
+          case 'large': enemyTexture = 'largeEnemySprite'; break;
+          case 'zigzag': enemyTexture = 'zigzagEnemySprite'; break;
+          default: enemyTexture = 'basicEnemySprite';
+        }
+        
+        const enemy = this.enemies.create(position.x, position.y, enemyTexture)
+        enemy.type = type
         
         // Ensure ALL enemies have a bright outline
-        this.addEnemyOutline(enemy)
+        this.addEnemyOutline(enemy, enemyTexture)
         
         // Assign random waypoint
         enemy.targetWaypoint = Phaser.Utils.Array.GetRandom(waypoints)
@@ -869,9 +904,7 @@ class GameScene extends Phaser.Scene {
         // Set next behavior change time
         enemy.nextBehaviorChange = this.time.now + this.ENEMY_BEHAVIOR_CHANGE_TIME
         
-        // Assign random enemy type
-        const types = ["basic", "fast", "large", "zigzag"]
-        const type = Phaser.Utils.Array.GetRandom(types)
+        // Setup enemy properties based on type
         this.setupEnemyByType(enemy, type)
       }
     }
@@ -880,10 +913,11 @@ class GameScene extends Phaser.Scene {
   /**
    * Add a bright outline to enemy for maximum visibility
    * @param {Phaser.GameObjects.Sprite} enemy - The enemy sprite
+   * @param {string} texture - The texture key to use for the outline
    */
-  addEnemyOutline(enemy) {
+  addEnemyOutline(enemy, texture) {
     // Create a bright white outline that follows the enemy
-    const outline = this.add.sprite(enemy.x, enemy.y, 'enemySprite')
+    const outline = this.add.sprite(enemy.x, enemy.y, texture)
     outline.setTint(0xffffff)  // Pure white
     outline.setAlpha(0.8)
     outline.setScale(1.2)  // Slightly larger than the enemy
@@ -903,50 +937,54 @@ class GameScene extends Phaser.Scene {
     })
   }
 
-  // Add this new method to set up enemy types
+  // Set up enemy types
   setupEnemyByType(enemy, type) {
-    enemy.type = type
-    
-    // Make ALL enemies have extremely bright, high-contrast colors
+    // Set properties based on type
     switch(type) {
       case 'fast':
         enemy.speed = Phaser.Math.Between(this.ENEMY_SPEED_MIN + 40, this.ENEMY_SPEED_MAX + 40)
-        enemy.setTint(0xffff00)  // Bright yellow
         enemy.setScale(0.8)
         break;
       case 'large':
         enemy.speed = Phaser.Math.Between(this.ENEMY_SPEED_MIN - 20, this.ENEMY_SPEED_MAX - 20)
-        enemy.setTint(0xff00ff)  // Bright magenta
         enemy.setScale(1.4)
         break;
       case 'zigzag':
         enemy.speed = Phaser.Math.Between(this.ENEMY_SPEED_MIN, this.ENEMY_SPEED_MAX)
-        enemy.setTint(0x00ffff)  // Bright cyan
         enemy.zigzagTime = 0
         enemy.zigzagFrequency = 0.003
         enemy.zigzagAmplitude = 50
         break;
       default: // basic
         enemy.speed = Phaser.Math.Between(this.ENEMY_SPEED_MIN, this.ENEMY_SPEED_MAX)
-        enemy.setTint(0xff3333)  // Bright red
     }
     
     // Add pulsing animation to all enemies for better visibility
     this.addEnemyPulseAnimation(enemy)
     
     // Add glow effect to all enemies
-    this.addEnemyGlow(enemy, enemy.tintTopLeft)
+    this.addEnemyGlow(enemy, enemy.texture.key)
   }
 
   /**
    * Add glow effect to enemy for better visibility
    * @param {Phaser.GameObjects.Sprite} enemy - The enemy sprite
-   * @param {number} color - The color of the glow
+   * @param {string} texture - The texture key to use for the glow
    */
-  addEnemyGlow(enemy, color) {
+  addEnemyGlow(enemy, texture) {
     // Create a glow sprite that follows the enemy
-    const glow = this.add.sprite(enemy.x, enemy.y, 'enemySprite')
-    glow.setTint(color)
+    const glow = this.add.sprite(enemy.x, enemy.y, texture)
+    
+    // Set glow color based on enemy type
+    let glowColor
+    switch(enemy.type) {
+      case 'fast': glowColor = 0xffff00; break;
+      case 'large': glowColor = 0xff00ff; break;
+      case 'zigzag': glowColor = 0x00ffff; break;
+      default: glowColor = 0xff3333;
+    }
+    
+    glow.setTint(glowColor)
     glow.setAlpha(0.6)  // Increased alpha
     glow.setScale(enemy.scale * 1.5)  // Larger glow
     glow.setBlendMode(Phaser.BlendModes.ADD)
