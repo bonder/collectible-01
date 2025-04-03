@@ -1918,9 +1918,9 @@ class GameScene extends Phaser.Scene {
     const glowLayers = [];
     const glowColor = 0x00ffff; // Cyan color
     
-    // Create 3 glow layers
-    for (let i = 0; i < 3; i++) {
-      const padding = (i + 1) * 4; // Increasing padding for each layer
+    // Create more glow layers for a stronger effect
+    for (let i = 0; i < 5; i++) {
+      const padding = (i + 1) * 3; // Closer spacing between layers
       const glow = this.add.rectangle(
         width/2, 
         height/2, 
@@ -1930,34 +1930,62 @@ class GameScene extends Phaser.Scene {
       
       glow.setStrokeStyle(2, glowColor);
       glow.setFillStyle(0x000000, 0); // Transparent fill
-      glow.setAlpha(0.3 - (i * 0.1)); // Decreasing alpha for outer layers
+      glow.setAlpha(0.4 - (i * 0.07)); // Higher starting alpha, slower falloff
       glow.setDepth(999 - i); // Place behind the main border but above game elements
+      
+      // Add blend mode for stronger glow effect
+      glow.setBlendMode(Phaser.BlendModes.ADD);
       
       glowLayers.push(glow);
     }
     
-    // Animate the glow layers
+    // Create an additional outer glow effect
+    const outerGlow = this.add.rectangle(
+      width/2,
+      height/2,
+      width + 30,
+      height + 30
+    );
+    outerGlow.setStrokeStyle(8, glowColor);
+    outerGlow.setFillStyle(0x000000, 0);
+    outerGlow.setAlpha(0.2);
+    outerGlow.setBlendMode(Phaser.BlendModes.ADD);
+    outerGlow.setDepth(994);
+    
+    // Animate the glow layers with more dramatic effect
     this.tweens.add({
       targets: glowLayers,
       alpha: {
         from: function(target, targetKey, value, targetIndex) {
-          return 0.1 + (targetIndex * 0.1); // Start with different alpha values
+          return 0.2 + (targetIndex * 0.05); // Start with different alpha values
         },
         to: function(target, targetKey, value, targetIndex) {
-          return 0.3 - (targetIndex * 0.1); // End with different alpha values
+          return 0.4 - (targetIndex * 0.07); // End with different alpha values
         }
       },
-      duration: 1500,
+      duration: 1200,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut'
     });
     
-    // Also animate the border stroke
+    // Animate the outer glow
+    this.tweens.add({
+      targets: outerGlow,
+      alpha: { from: 0.1, to: 0.3 },
+      lineWidth: { from: 6, to: 12 },
+      duration: 1200,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+    
+    // Animate the main border with more dramatic effect
     this.tweens.add({
       targets: border,
-      lineWidth: { from: 2, to: 5 },
-      duration: 1500,
+      lineWidth: { from: 3, to: 6 },
+      alpha: { from: 0.8, to: 1 },
+      duration: 1200,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut'
