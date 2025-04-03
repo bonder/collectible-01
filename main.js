@@ -1614,66 +1614,8 @@ class GameScene extends Phaser.Scene {
 
     // Update game state
     this.gameOver = true
-
-    // Clean up timer
-    if (this.waveTimerEvent) {
-      this.waveTimerEvent.remove()
-    }
-
-    // Pac-Man style death animation
-    this.playDeathAnimation(player, () => {
-      // Show game over overlay
-      this.showGameOverOverlay(() => {
-        // Transition to GameOver scene
-        this.scene.start('GameOverScene', { 
-          score: this.score, 
-          wave: this.wave,
-          highScore: this.getHighScore()
-        })
-      })
-    })
-  }
-
-  /**
-   * Play Pac-Man style death animation
-   * @param {Phaser.GameObjects.Sprite} player - The player sprite
-   * @param {Function} callback - Function to call when animation completes
-   */
-  playDeathAnimation(player, callback) {
-    // Stop any existing player animations
-    if (player.anims && player.anims.isPlaying) {
-      player.anims.stop()
-    }
     
-    // Flash the player
-    this.tweens.add({
-      targets: player,
-      alpha: 0.3,
-      duration: 200,
-      yoyo: true,
-      repeat: 2,
-      onComplete: () => {
-        // Create rotation animation
-        this.tweens.add({
-          targets: player,
-          angle: 360 * 2, // Rotate 720 degrees (2 full rotations)
-          scaleX: 0,
-          scaleY: 0,
-          duration: 1000,
-          ease: 'Power1',
-          onUpdate: () => {
-            // Add particles during rotation
-            if (Math.random() > 0.8) {
-              this.explosionParticles.setPosition(player.x, player.y)
-              this.explosionParticles.explode(3)
-            }
-          },
-          onComplete: callback
-        })
-      }
-    })
-    
-    // Play a simple death sound using the Web Audio API
+    // Play death sound using Web Audio API directly
     try {
       const audioContext = this.sound.context;
       if (audioContext) {
@@ -1681,42 +1623,26 @@ class GameScene extends Phaser.Scene {
         const gainNode = audioContext.createGain();
         
         oscillator.type = 'sawtooth';
-        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-        oscillator.frequency.exponentialRampToValueAtTime(50, audioContext.currentTime + 1);
+        oscillator.frequency.setValueAtTime(400, audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(100, audioContext.currentTime + 0.5);
         
-        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 1);
+        gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.5);
         
         oscillator.connect(gainNode);
         gainNode.connect(audioContext.destination);
         
         oscillator.start();
-        oscillator.stop(audioContext.currentTime + 1);
+        oscillator.stop(audioContext.currentTime + 0.5);
       }
     } catch (error) {
-      console.warn("Error playing death sound:", error);
+      console.error("Error playing death sound:", error);
     }
-  }
-
-  /**
-   * Show game over overlay
-   * @param {Function} callback - Function to call when overlay completes
-   */
-  showGameOverOverlay(callback) {
-    // Create semi-transparent overlay
-    const overlay = this.add.rectangle(
-      this.cameras.main.width / 2,
-      this.cameras.main.height / 2,
-      this.cameras.main.width,
-      this.cameras.main.height,
-      0x000000,
-      0
-    ).setDepth(100)
     
     // Create game over text
     const gameOverText = this.add.text(
       this.cameras.main.width / 2,
-      this.cameras.main.height / 2 - 50,
+      this.cameras.main.height / 2,
       'GAME OVER',
       {
         fontSize: '64px',
@@ -1726,74 +1652,23 @@ class GameScene extends Phaser.Scene {
         strokeThickness: 6,
         align: 'center'
       }
-    ).setOrigin(0.5).setDepth(101).setAlpha(0)
+    ).setOrigin(0.5).setDepth(100);
     
-    // Create score text
-    const scoreText = this.add.text(
-      this.cameras.main.width / 2,
-      this.cameras.main.height / 2 + 20,
-      `Score: ${this.score}`,
-      {
-        fontSize: '32px',
-        color: '#ffffff',
-        align: 'center'
-      }
-    ).setOrigin(0.5).setDepth(101).setAlpha(0)
+    // Add dramatic effects
+    this.cameras.main.shake(500, 0.03);
+    this.cameras.main.flash(300, 255, 0, 0);
     
-    // Fade in overlay
-    this.tweens.add({
-      targets: overlay,
-      alpha: 0.7,
-      duration: 1000,
-      ease: 'Power2',
-      onComplete: () => {
-        // Fade in text with slight delay between elements
-        this.tweens.add({
-          targets: [gameOverText, scoreText],
-          alpha: 1,
-          duration: 800,
-          ease: 'Power2',
-          delay: function (target, index) { return index * 300 },
-          onComplete: () => {
-            // Wait before transitioning to next scene
-            this.time.delayedCall(2000, callback)
-          }
-        })
-      }
-    })
-  }
-
-  /**
-   * Get the current high score from local storage
-   * @returns {number} The current high score
-   */
-  getHighScore() {
-    const storedScore = localStorage.getItem('highScore')
-    const highScore = storedScore ? parseInt(storedScore) : 0
+    // Player death animation
+    this.player.setTint(0xff0000);
     
-    // Update high score if current score is higher
-    if (this.score > highScore) {
-      localStorage.setItem('highScore', this.score.toString())
-      return this.score
-    }
+    // Emit game over event for UI
+    this.events.emit("gameOver", this.score, this.wave);
     
-    return highScore
-  }
-
-  /**
-   * Helper method to get waypoint by name
-   * @param {string} name - The name of the waypoint
-   * @returns {Phaser.GameObjects.Sprite} The waypoint sprite
-   */
-  getWaypointByName(name) {
-    switch (name) {
-      case "top": return this.waypointTop;
-      case "bottom": return this.waypointBottom;
-      case "left": return this.waypointLeft;
-      case "right": return this.waypointRight;
-      default: return null;
-    }
-  }
+    // Transition to game over scene after delay
+    this.time.delayedCall(2000, () => {
+      this.scene.start('GameOverScene', { score: this.score, wave: this.wave });
+    });
+  } // Add this closing brace
 
   /**
    * Create an interesting floor with tiles, patterns and ambient effects
@@ -1941,6 +1816,26 @@ class GameScene extends Phaser.Scene {
     
     // Add to floor container
     this.floorContainer.add(this.ambientParticles);
+  }
+
+  /**
+   * Get a waypoint by its name
+   * @param {string} name - The name of the waypoint ('top', 'bottom', 'left', 'right')
+   * @returns {Phaser.GameObjects.Sprite} The waypoint sprite
+   */
+  getWaypointByName(name) {
+    switch(name) {
+      case 'top':
+        return this.waypointTop;
+      case 'bottom':
+        return this.waypointBottom;
+      case 'left':
+        return this.waypointLeft;
+      case 'right':
+        return this.waypointRight;
+      default:
+        return null;
+    }
   }
 }
 
