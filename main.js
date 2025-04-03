@@ -140,6 +140,9 @@ class GameScene extends Phaser.Scene {
     this.createGameObjects();
     this.cursors = this.input.keyboard.createCursorKeys();
     this.updateUI();
+    
+    // Add border glow effect
+    this.setupBorderGlow();
   }
 
   /**
@@ -1895,6 +1898,70 @@ class GameScene extends Phaser.Scene {
       default:
         return null;
     }
+  }
+
+  /**
+   * Setup border glow effect using standard Phaser graphics and tweens
+   */
+  setupBorderGlow() {
+    // Create a border container
+    const width = this.cameras.main.width;
+    const height = this.cameras.main.height;
+    
+    // Create the main border
+    const border = this.add.rectangle(width/2, height/2, width, height);
+    border.setStrokeStyle(4, 0x00ffff); // Cyan border
+    border.setFillStyle(0x000000, 0); // Transparent fill
+    border.setDepth(1000);
+    
+    // Create multiple glow layers with different sizes and opacities
+    const glowLayers = [];
+    const glowColor = 0x00ffff; // Cyan color
+    
+    // Create 3 glow layers
+    for (let i = 0; i < 3; i++) {
+      const padding = (i + 1) * 4; // Increasing padding for each layer
+      const glow = this.add.rectangle(
+        width/2, 
+        height/2, 
+        width + padding * 2, 
+        height + padding * 2
+      );
+      
+      glow.setStrokeStyle(2, glowColor);
+      glow.setFillStyle(0x000000, 0); // Transparent fill
+      glow.setAlpha(0.3 - (i * 0.1)); // Decreasing alpha for outer layers
+      glow.setDepth(999 - i); // Place behind the main border but above game elements
+      
+      glowLayers.push(glow);
+    }
+    
+    // Animate the glow layers
+    this.tweens.add({
+      targets: glowLayers,
+      alpha: {
+        from: function(target, targetKey, value, targetIndex) {
+          return 0.1 + (targetIndex * 0.1); // Start with different alpha values
+        },
+        to: function(target, targetKey, value, targetIndex) {
+          return 0.3 - (targetIndex * 0.1); // End with different alpha values
+        }
+      },
+      duration: 1500,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+    
+    // Also animate the border stroke
+    this.tweens.add({
+      targets: border,
+      lineWidth: { from: 2, to: 5 },
+      duration: 1500,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
   }
 }
 
