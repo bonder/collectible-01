@@ -1916,23 +1916,31 @@ class GameScene extends Phaser.Scene {
     border.setDepth(1000);
     border.enableFilters(); // Enable filters for this GameObject
     
-    // Add glow effect to the border
-    const glowFX = border.filters.internal.addGlow(0x00ffff, 8, 2, false);
+    // Add stronger glow effect to the border
+    const glowFX = border.filters.internal.addGlow(0x00ffff, 15, 4, false); // Increased strength and quality
     
     // Create a second, slightly larger border with its own glow
-    this.createBorderTexture('outerBorderTexture', width + 10, height + 10, 2);
+    this.createBorderTexture('outerBorderTexture', width + 20, height + 20, 3); // Increased size and line width
     const outerBorder = this.add.sprite(width/2, height/2, 'outerBorderTexture');
     outerBorder.setDepth(999);
-    outerBorder.setAlpha(0.7);
+    outerBorder.setAlpha(0.8); // Increased alpha
     outerBorder.enableFilters(); // Enable filters
     
-    // Add glow to the outer border
-    const outerGlowFX = outerBorder.filters.internal.addGlow(0x00ffff, 6, 0, false);
+    // Add stronger glow to the outer border
+    const outerGlowFX = outerBorder.filters.internal.addGlow(0x00ffff, 12, 3, false); // Increased strength
     
-    // Animate the glow effects
+    // Add a third, even larger border for extra glow effect
+    this.createBorderTexture('outermost', width + 40, height + 40, 1);
+    const outermostBorder = this.add.sprite(width/2, height/2, 'outermost');
+    outermostBorder.setDepth(998);
+    outermostBorder.setAlpha(0.5);
+    outermostBorder.enableFilters();
+    const outermostGlowFX = outermostBorder.filters.internal.addGlow(0x00ffff, 20, 2, false);
+    
+    // Animate the glow effects with more dramatic values
     this.tweens.add({
       targets: glowFX,
-      outerStrength: { from: 4, to: 12 },
+      outerStrength: { from: 8, to: 20 }, // More dramatic range
       duration: 1200,
       yoyo: true,
       repeat: -1,
@@ -1941,12 +1949,22 @@ class GameScene extends Phaser.Scene {
     
     this.tweens.add({
       targets: outerGlowFX,
-      outerStrength: { from: 3, to: 8 },
+      outerStrength: { from: 6, to: 15 }, // More dramatic range
       duration: 1200,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut',
-      delay: 600 // Offset to create alternating pulses
+      delay: 400 // Offset to create alternating pulses
+    });
+    
+    this.tweens.add({
+      targets: outermostGlowFX,
+      outerStrength: { from: 10, to: 25 }, // More dramatic range
+      duration: 1200,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+      delay: 800 // Further offset
     });
     
     // Add corner glow effects for extra emphasis
@@ -1967,8 +1985,8 @@ class GameScene extends Phaser.Scene {
     
     const graphics = this.make.graphics();
     
-    // Draw a rectangle with stroke only
-    graphics.lineStyle(lineWidth, 0x00ffff, 1);
+    // Draw a rectangle with stroke only - brighter color
+    graphics.lineStyle(lineWidth, 0x33ffff, 1); // Brighter cyan
     graphics.strokeRect(0, 0, width, height);
     
     // Generate the texture
@@ -1993,25 +2011,25 @@ class GameScene extends Phaser.Scene {
     ];
     
     // Create a texture for the corner glow
-    this.createCornerGlowTexture('cornerGlowTexture', 40);
+    this.createCornerGlowTexture('cornerGlowTexture', 60); // Larger corner glow
     
     corners.forEach(corner => {
       // Create a sprite at each corner
       const cornerGlow = this.add.sprite(corner.x, corner.y, 'cornerGlowTexture');
       cornerGlow.setDepth(998);
-      cornerGlow.setAlpha(0.3);
+      cornerGlow.setAlpha(0.5); // Increased alpha
       cornerGlow.enableFilters(); // Enable filters
       
       // Add a stronger glow effect to the corner
-      const cornerGlowFX = cornerGlow.filters.internal.addGlow(0x00ffff, 10, 5, false);
+      const cornerGlowFX = cornerGlow.filters.internal.addGlow(0x33ffff, 15, 5, false); // Brighter color, stronger glow
       
       // Add a post-processing glow for extra effect
-      const postGlowFX = cornerGlow.filters.internal.addGlow(0x00ffff, 5, 0, false, 0.5, 8);
+      const postGlowFX = cornerGlow.filters.internal.addGlow(0x33ffff, 10, 3, false, 0.7, 10); // Enhanced glow
       
-      // Animate the corner glows
+      // Animate the corner glows with more dramatic values
       this.tweens.add({
         targets: [cornerGlowFX, postGlowFX],
-        outerStrength: { from: 5, to: 15 },
+        outerStrength: { from: 10, to: 25 }, // More dramatic range
         duration: 1500,
         yoyo: true,
         repeat: -1,
@@ -2032,8 +2050,8 @@ class GameScene extends Phaser.Scene {
     
     const graphics = this.make.graphics();
     
-    // Draw a circle
-    graphics.fillStyle(0x00ffff, 1);
+    // Draw a circle with brighter color
+    graphics.fillStyle(0x33ffff, 1); // Brighter cyan
     graphics.fillCircle(size/2, size/2, size/2);
     
     // Generate the texture
