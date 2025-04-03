@@ -1664,9 +1664,16 @@ class GameScene extends Phaser.Scene {
     // Emit game over event for UI
     this.events.emit("gameOver", this.score, this.wave);
     
-    // Transition to game over scene after delay
+    // Get the current high score
+    const highScore = parseInt(localStorage.getItem("highScore")) || 0;
+    
+    // Transition to game over scene after delay with high score
     this.time.delayedCall(2000, () => {
-      this.scene.start('GameOverScene', { score: this.score, wave: this.wave });
+      this.scene.start('GameOverScene', { 
+        score: this.score, 
+        wave: this.wave,
+        highScore: Math.max(this.score, highScore) // Pass the updated high score
+      });
     });
   } // Add this closing brace
 
@@ -2139,7 +2146,15 @@ class GameOverScene extends Phaser.Scene {
   init(data) {
     this.score = data.score || 0
     this.wave = data.wave || 1
-    this.highScore = data.highScore || 0
+    
+    // Get the high score from localStorage or from passed data
+    const storedHighScore = parseInt(localStorage.getItem("highScore")) || 0
+    this.highScore = data.highScore || storedHighScore
+    
+    // Update localStorage if we have a new high score
+    if (this.score > storedHighScore) {
+      localStorage.setItem("highScore", this.score)
+    }
   }
 
   create() {
@@ -2205,7 +2220,7 @@ class GameOverScene extends Phaser.Scene {
     ).setOrigin(0.5)
     
     // Add pulsing animation if it's a new high score
-    if (this.score >= this.highScore) {
+    if (this.score >= this.highScore && this.score > 0) {
       this.add.text(
         this.cameras.main.width / 2,
         370,
