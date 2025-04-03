@@ -1901,95 +1901,151 @@ class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Setup border glow effect using standard Phaser graphics and tweens
+   * Setup border glow effect using Phaser's FX system with proper GameObjects
    */
   setupBorderGlow() {
     // Create a border container
     const width = this.cameras.main.width;
     const height = this.cameras.main.height;
     
-    // Create the main border
-    const border = this.add.rectangle(width/2, height/2, width, height);
-    border.setStrokeStyle(4, 0x00ffff); // Cyan border
-    border.setFillStyle(0x000000, 0); // Transparent fill
+    // First create a texture for our borders
+    this.createBorderTexture('borderTexture', width, height);
+    
+    // Create the main border using a sprite (which is a GameObject with FX)
+    const border = this.add.sprite(width/2, height/2, 'borderTexture');
     border.setDepth(1000);
+    border.enableFilters()
     
-    // Create multiple glow layers with different sizes and opacities
-    const glowLayers = [];
-    const glowColor = 0x00ffff; // Cyan color
+    // Add padding to accommodate the glow effect
+    //border.preFX.setPadding(16);
     
-    // Create more glow layers for a stronger effect
-    for (let i = 0; i < 5; i++) {
-      const padding = (i + 1) * 3; // Closer spacing between layers
-      const glow = this.add.rectangle(
-        width/2, 
-        height/2, 
-        width + padding * 2, 
-        height + padding * 2
-      );
-      
-      glow.setStrokeStyle(2, glowColor);
-      glow.setFillStyle(0x000000, 0); // Transparent fill
-      glow.setAlpha(0.4 - (i * 0.07)); // Higher starting alpha, slower falloff
-      glow.setDepth(999 - i); // Place behind the main border but above game elements
-      
-      // Add blend mode for stronger glow effect
-      glow.setBlendMode(Phaser.BlendModes.ADD);
-      
-      glowLayers.push(glow);
+    // Add glow effect to the border
+    const glowFX = border.filters.internal.addGlow(0x00ffff, 8, 2, false);
+    
+    // Create a second, slightly larger border with its own glow
+    this.createBorderTexture('outerBorderTexture', width + 10, height + 10, 2);
+    const outerBorder = this.add.sprite(width/2, height/2, 'outerBorderTexture');
+    outerBorder.setDepth(999);
+    outerBorder.setAlpha(0.7);
+    outerBorder.enableFilters()
+    
+    // Add padding and glow to the outer border
+    //outerBorder.preFX.setPadding(16);
+    const outerGlowFX = outerBorder.filters.internal.addGlow(0x00ffff, 6, 0, false);
+    
+    // Animate the glow effects
+    this.tweens.add({
+      targets: glowFX,
+      outerStrength: { from: 4, to: 12 },
+      duration: 1200,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+    
+    this.tweens.add({
+      targets: outerGlowFX,
+      outerStrength: { from: 3, to: 8 },
+      duration: 1200,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+      delay: 600 // Offset to create alternating pulses
+    });
+    
+    // Add corner glow effects for extra emphasis
+    this.addCornerGlows(width, height);
+  }
+
+  /**
+   * Create a border texture for use with sprites
+   * @param {string} key - The texture key
+   * @param {number} width - The width of the border
+   * @param {number} height - The height of the border
+   * @param {number} lineWidth - The width of the border line (default: 4)
+   */
+  createBorderTexture(key, width, height, lineWidth = 4) {
+    if (this.textures.exists(key)) {
+      return key;
     }
     
-    // Create an additional outer glow effect
-    const outerGlow = this.add.rectangle(
-      width/2,
-      height/2,
-      width + 30,
-      height + 30
-    );
-    outerGlow.setStrokeStyle(8, glowColor);
-    outerGlow.setFillStyle(0x000000, 0);
-    outerGlow.setAlpha(0.2);
-    outerGlow.setBlendMode(Phaser.BlendModes.ADD);
-    outerGlow.setDepth(994);
+    const graphics = this.make.graphics();
     
-    // Animate the glow layers with more dramatic effect
-    this.tweens.add({
-      targets: glowLayers,
-      alpha: {
-        from: function(target, targetKey, value, targetIndex) {
-          return 0.2 + (targetIndex * 0.05); // Start with different alpha values
-        },
-        to: function(target, targetKey, value, targetIndex) {
-          return 0.4 - (targetIndex * 0.07); // End with different alpha values
-        }
-      },
-      duration: 1200,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut'
-    });
+    // Draw a rectangle with stroke only
+    graphics.lineStyle(lineWidth, 0x00ffff, 1);
+    graphics.strokeRect(0, 0, width, height);
     
-    // Animate the outer glow
-    this.tweens.add({
-      targets: outerGlow,
-      alpha: { from: 0.1, to: 0.3 },
-      lineWidth: { from: 6, to: 12 },
-      duration: 1200,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut'
-    });
+    // Generate the texture
+    graphics.generateTexture(key, width, height);
+    graphics.destroy();
     
-    // Animate the main border with more dramatic effect
-    this.tweens.add({
-      targets: border,
-      lineWidth: { from: 3, to: 6 },
-      alpha: { from: 0.8, to: 1 },
-      duration: 1200,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut'
+    return key;
+  }
+
+  /**
+   * Add additional glow effects to the corners for emphasis
+   * @param {number} width - Screen width
+   * @param {number} height - Screen height
+   */
+  addCornerGlows(width, height) {
+    // Create corner positions
+    const corners = [
+      { x: 0, y: 0 },                 // Top-left
+      { x: width, y: 0 },             // Top-right
+      { x: 0, y: height },            // Bottom-left
+      { x: width, y: height }         // Bottom-right
+    ];
+    
+    // Create a texture for the corner glow
+    this.createCornerGlowTexture('cornerGlowTexture', 40);
+    
+    corners.forEach(corner => {
+      // Create a sprite at each corner (which is a GameObject with FX)
+      const cornerGlow = this.add.sprite(corner.x, corner.y, 'cornerGlowTexture');
+      cornerGlow.setDepth(998);
+      cornerGlow.setAlpha(0.3);
+      cornerGlow.enableFilters()
+      
+      // Add a stronger glow effect to the corner
+      //cornerGlow.preFX.setPadding(20);
+      const cornerGlowFX = cornerGlow.filters.internal.addGlow(0x00ffff, 10, 5, false);
+      
+      // Add a post-processing glow for extra effect
+      const postGlowFX = cornerGlow.filters.internal.addGlow(0x00ffff, 5, 0, false, 0.5, 8);
+      
+      // Animate the corner glows
+      this.tweens.add({
+        targets: [cornerGlowFX, postGlowFX],
+        outerStrength: { from: 5, to: 15 },
+        duration: 1500,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      });
     });
+  }
+
+  /**
+   * Create a texture for corner glows
+   * @param {string} key - The texture key
+   * @param {number} size - The size of the texture
+   */
+  createCornerGlowTexture(key, size) {
+    if (this.textures.exists(key)) {
+      return key;
+    }
+    
+    const graphics = this.make.graphics();
+    
+    // Draw a circle
+    graphics.fillStyle(0x00ffff, 1);
+    graphics.fillCircle(size/2, size/2, size/2);
+    
+    // Generate the texture
+    graphics.generateTexture(key, size, size);
+    graphics.destroy();
+    
+    return key;
   }
 }
 
