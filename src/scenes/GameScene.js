@@ -426,5 +426,98 @@ export class GameScene extends Phaser.Scene {
     const glowFX = border.filters.internal.addGlow(0x00ffff, 15, 4, false); // Increased strength and quality
   }
 
-  // Add any other methods from the GameScene class here
+  /**
+   * Handle player movement based on cursor keys
+   */
+  handlePlayerMovement() {
+    // Reset velocity at the start of each update
+    if (!this.isDashing) {
+      this.player.body.setVelocity(0);
+    }
+
+    // Handle dash ability
+    if (this.cursors.space.isDown && this.canDash && !this.isDashing) {
+      this.startDash();
+    }
+
+    // Regular movement (only if not dashing)
+    if (!this.isDashing) {
+      // Create a velocity vector
+      let velocityX = 0;
+      let velocityY = 0;
+
+      // Apply velocity based on input
+      if (this.cursors.left.isDown) {
+        velocityX = -this.PLAYER_SPEED;
+      } else if (this.cursors.right.isDown) {
+        velocityX = this.PLAYER_SPEED;
+      }
+
+      if (this.cursors.up.isDown) {
+        velocityY = -this.PLAYER_SPEED;
+      } else if (this.cursors.down.isDown) {
+        velocityY = this.PLAYER_SPEED;
+      }
+
+      // Normalize diagonal movement
+      if (velocityX !== 0 && velocityY !== 0) {
+        // Create a vector and normalize it
+        const vector = new Phaser.Math.Vector2(velocityX, velocityY).normalize();
+        
+        // Apply the normalized vector multiplied by the speed
+        velocityX = vector.x * this.PLAYER_SPEED;
+        velocityY = vector.y * this.PLAYER_SPEED;
+      }
+
+      // Apply the calculated velocity
+      this.player.body.setVelocity(velocityX, velocityY);
+    }
+  }
+
+  startDash() {
+    this.isDashing = true;
+    this.canDash = false;
+    
+    // Set dash velocity based on current facing direction
+    let dashVelocityX = 0;
+    let dashVelocityY = 0;
+    
+    if (this.cursors.left.isDown) dashVelocityX = -this.PLAYER_DASH_SPEED;
+    else if (this.cursors.right.isDown) dashVelocityX = this.PLAYER_DASH_SPEED;
+    
+    if (this.cursors.up.isDown) dashVelocityY = -this.PLAYER_DASH_SPEED;
+    else if (this.cursors.down.isDown) dashVelocityY = this.PLAYER_DASH_SPEED;
+    
+    // If no direction pressed, dash forward (up)
+    if (dashVelocityX === 0 && dashVelocityY === 0) {
+      dashVelocityY = -this.PLAYER_DASH_SPEED;
+    } else if (dashVelocityX !== 0 && dashVelocityY !== 0) {
+      // Normalize diagonal dash
+      const vector = new Phaser.Math.Vector2(dashVelocityX, dashVelocityY).normalize();
+      dashVelocityX = vector.x * this.PLAYER_DASH_SPEED;
+      dashVelocityY = vector.y * this.PLAYER_DASH_SPEED;
+    }
+    
+    // Apply dash velocity
+    this.player.body.setVelocity(dashVelocityX, dashVelocityY);
+    
+    // Visual effects
+    this.player.setTint(0x00ffff);
+    
+    // Start particle emission
+    this.playerTrail.setPosition(this.player.x, this.player.y);
+    this.playerTrail.start();
+    
+    // End dash after duration
+    this.time.delayedCall(this.DASH_DURATION, this.endDash, [], this);
+    
+    // Reset dash cooldown
+    this.time.delayedCall(this.DASH_COOLDOWN, () => {
+      this.canDash = true;
+      this.events.emit("dashReady");
+    }, [], this);
+    
+    // Update UI to show dash on cooldown
+    this.events.emit("dashReady", false);
+  }
 }
